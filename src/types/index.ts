@@ -1,0 +1,710 @@
+export type TeamSide = "home" | "away";
+
+/** Über/Unter-Tendenz */
+export type OUPick = "over" | "under" | null;
+
+/** Wurf-/Schlaghänder-Split */
+export type Handedness = "L" | "R";
+
+// ---------------------------------------------------------------------------
+// Modul 1: Team-Form
+// ---------------------------------------------------------------------------
+export interface TeamFormInput {
+  /** Erzielte Runs der letzten 10 Spiele */
+  last10: string[];
+  /** Erzielte Runs der letzten 20 Spiele */
+  last20: string[];
+  /** Zugelassene Runs der letzten 10 Spiele */
+  runsAllowedLast10: string[];
+  /** Aktuelle Siegesserie (positiv) oder Niederlagenserie (negativ), 0 = keine */
+  streak: number;
+  /** Runs pro Spiel zuhause */
+  homeRunsPerGame: string;
+  /** Runs pro Spiel auswärts */
+  awayRunsPerGame: string;
+}
+
+// ---------------------------------------------------------------------------
+// Modul 2: Starting Pitcher
+// ---------------------------------------------------------------------------
+export interface PitcherInput {
+  era: string;
+  xera: string;
+  fip: string;
+  siera: string;
+  whip: string;
+  babip: string;
+  kPct: string;
+  bbPct: string;
+  hr9: string;
+  gbPct: string;
+  fbPct: string;
+  lobPct: string;
+  hardHitPct: string;
+  barrelPct: string;
+  /** Pitch Count des letzten Starts (Einzelwert, historisch beibehalten). */
+  pitchCount: string;
+  restDays: string;
+  /** Zugelassene Runs der letzten 5 Starts. */
+  last5Starts: string[];
+  /** Zugelassene Runs der letzten 10 Starts (Starting Pitcher PRO). */
+  last10Starts: string[];
+  /** Pitch Count der letzten 5 Starts (Starting Pitcher PRO). */
+  pitchCountLast5: string[];
+  velocity: string;
+  spinRate: string;
+  throwsHand: Handedness;
+  dayEraSplit: string;
+  nightEraSplit: string;
+  homeEraSplit: string;
+  awayEraSplit: string;
+}
+
+// ---------------------------------------------------------------------------
+// Starting Pitcher PRO: individuelle Qualitäts- & Confidence-Bewertung
+// ---------------------------------------------------------------------------
+
+/** Notenskala des individuellen Pitcher Scores (0–100). */
+export type PitcherGrade = "Elite" | "Sehr gut" | "Gut" | "Durchschnitt" | "Schwach" | "Sehr schwach";
+
+/** Einzelne, aus echten Kennzahlen abgeleitete Beobachtung (Stärke/Schwäche). */
+export interface PitcherMetricNote {
+  /** Anzeigename der Kennzahl, z. B. "ERA". */
+  metric: string;
+  /** Formatierter Wert, z. B. "3.15" oder "24.8 %". */
+  value: string;
+  /** Kurze Erklärung im Vergleich zum Liga-Durchschnitt. */
+  note: string;
+}
+
+/**
+ * Vollständige Pitcher-PRO-Bewertung eines einzelnen Starting Pitchers,
+ * unabhängig vom direkten Matchup-Score des Prediction-Moduls.
+ */
+export interface PitcherQualityAssessment {
+  /** Individueller Pitcher Score, 0 (sehr schwach) – 100 (Elite). */
+  score: number;
+  grade: PitcherGrade;
+  /** Vertrauens-Score in die Prognosekraft dieses Pitchers, 0–100. */
+  confidence: number;
+  /** Ob genügend Kennzahlen für eine belastbare Bewertung vorhanden waren. */
+  hasData: boolean;
+  strengths: PitcherMetricNote[];
+  weaknesses: PitcherMetricNote[];
+  /** Bis zu 3 herausragende Kennzahlen, absteigend sortiert. */
+  topMetrics: string[];
+  warnings: string[];
+  positiveFactors: string[];
+  negativeFactors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Modul 3: Bullpen
+// ---------------------------------------------------------------------------
+export interface BullpenInput {
+  era: string;
+  whip: string;
+  fip: string;
+  war: string;
+  closerAvailable: boolean;
+  middleReliefAvailable: boolean;
+  inningsLast3Days: string;
+  inningsLast7Days: string;
+  /** Bullpen PRO: xFIP (erwartete FIP auf Basis der Fly-Ball-Rate statt tatsächlicher HR). */
+  xfip: string;
+  /** Bullpen PRO: Strikeout-Rate des gesamten Bullpens. */
+  kPct: string;
+  /** Bullpen PRO: Walk-Rate des gesamten Bullpens. */
+  bbPct: string;
+  /** Bullpen PRO: Home Runs pro 9 Innings, Bullpen-aggregiert. */
+  hr9: string;
+  /** Bullpen PRO: Left-On-Base % (Strandingsrate) des Bullpens. */
+  lobPct: string;
+  /** Bullpen PRO: Hard-Hit % gegen den Bullpen (Statcast). */
+  hardHitPct: string;
+  /** Bullpen PRO: Ob ein ausgeruhter High-Leverage-Reliever (Setup-Man-Niveau) verfügbar ist. */
+  highLeverageAvailable: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Bullpen PRO: individuelle Qualitäts- & Confidence-Bewertung
+// ---------------------------------------------------------------------------
+
+/** Notenskala des individuellen Bullpen Scores (0–100). */
+export type BullpenGrade = "Elite" | "Sehr gut" | "Gut" | "Durchschnitt" | "Schwach" | "Sehr schwach";
+
+/** Einzelne, aus echten Kennzahlen abgeleitete Beobachtung (Stärke/Schwäche) eines Bullpens. */
+export interface BullpenMetricNote {
+  /** Anzeigename der Kennzahl, z. B. "ERA". */
+  metric: string;
+  /** Formatierter Wert, z. B. "3.65" oder "24.1 %". */
+  value: string;
+  /** Kurze Erklärung im Vergleich zum Liga-Durchschnitt. */
+  note: string;
+}
+
+/**
+ * Vollständige Bullpen-PRO-Bewertung eines einzelnen Team-Bullpens,
+ * unabhängig vom direkten Matchup-Score des Prediction-Moduls.
+ */
+export interface BullpenQualityAssessment {
+  /** Individueller Bullpen Score, 0 (sehr schwach) – 100 (Elite). */
+  score: number;
+  grade: BullpenGrade;
+  /** Vertrauens-Score in die Prognosekraft dieses Bullpens, 0–100. */
+  confidence: number;
+  /** Ob genügend Kennzahlen für eine belastbare Bewertung vorhanden waren. */
+  hasData: boolean;
+  strengths: BullpenMetricNote[];
+  weaknesses: BullpenMetricNote[];
+  /** Bis zu 3 herausragende Kennzahlen, absteigend sortiert. */
+  topMetrics: string[];
+  warnings: string[];
+  positiveFactors: string[];
+  negativeFactors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Modul 4: Offense
+// ---------------------------------------------------------------------------
+export interface OffenseInput {
+  runsPerGame: string;
+  ops: string;
+  wrcPlus: string;
+  woba: string;
+  iso: string;
+  avg: string;
+  obp: string;
+  slg: string;
+  kPct: string;
+  bbPct: string;
+  babip: string;
+  hardHitPct: string;
+  barrelPct: string;
+  rispAvg: string;
+  homeSplitRuns: string;
+  awaySplitRuns: string;
+  last10Games: string[];
+  /** Offense PRO: Expected wOBA auf Basis der Batted-Ball-Qualität (Statcast). */
+  xwoba: string;
+  /** Offense PRO: durchschnittliche Exit Velocity in mph (Statcast). */
+  exitVelocity: string;
+  /** Offense PRO: durchschnittlicher Launch Angle in Grad (Statcast). */
+  launchAngle: string;
+  /** Offense PRO: Contact % (Anteil getroffener Swings). */
+  contactPct: string;
+  /** Offense PRO: Chase % (Swings außerhalb der Zone). */
+  chasePct: string;
+  /** Offense PRO: Zone-Contact % (Kontaktrate bei Pitches in der Zone). */
+  zoneContactPct: string;
+  /** Offense PRO: Swing % (Gesamt-Swing-Rate). */
+  swingPct: string;
+  /** Offense PRO: OPS gegen Linkshänder. */
+  vsLhpOps: string;
+  /** Offense PRO: OPS gegen Rechtshänder. */
+  vsRhpOps: string;
+  /** Offense PRO: durchschnittliche Runs/Spiel der letzten 7 Spiele. */
+  last7AvgRuns: string;
+  /** Offense PRO: durchschnittliche Runs/Spiel der letzten 15 Spiele. */
+  last15AvgRuns: string;
+  /** Offense PRO: durchschnittliche Runs/Spiel der letzten 30 Spiele. */
+  last30AvgRuns: string;
+}
+
+// ---------------------------------------------------------------------------
+// Offense PRO: individuelle Qualitäts- & Confidence-Bewertung
+// ---------------------------------------------------------------------------
+
+/** Notenskala des individuellen Offense Scores (0–100). */
+export type OffenseGrade = "Elite" | "Sehr gut" | "Gut" | "Durchschnitt" | "Schwach" | "Sehr schwach";
+
+/** Einzelne, aus echten Kennzahlen abgeleitete Beobachtung (Stärke/Schwäche) einer Offense. */
+export interface OffenseMetricNote {
+  /** Anzeigename der Kennzahl, z. B. "wOBA". */
+  metric: string;
+  /** Formatierter Wert, z. B. "0.335" oder "38.2 %". */
+  value: string;
+  /** Kurze Erklärung im Vergleich zum Liga-Durchschnitt. */
+  note: string;
+}
+
+/**
+ * Vollständige Offense-PRO-Bewertung eines einzelnen Team-Lineups,
+ * unabhängig vom direkten Matchup-Score des Prediction-Moduls.
+ */
+export interface OffenseQualityAssessment {
+  /** Individueller Offense Score, 0 (sehr schwach) – 100 (Elite). */
+  score: number;
+  grade: OffenseGrade;
+  /** Vertrauens-Score in die Prognosekraft dieser Offense, 0–100. */
+  confidence: number;
+  /** Ob genügend Kennzahlen für eine belastbare Bewertung vorhanden waren. */
+  hasData: boolean;
+  strengths: OffenseMetricNote[];
+  weaknesses: OffenseMetricNote[];
+  /** Bis zu 3 herausragende Kennzahlen, absteigend sortiert. */
+  topMetrics: string[];
+  warnings: string[];
+  positiveFactors: string[];
+  negativeFactors: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Modul 5: Wetter
+// ---------------------------------------------------------------------------
+export type WindDirection = "out" | "in" | "cross" | "none";
+
+export interface WeatherInput {
+  temperatureC: string;
+  windSpeedMph: string;
+  windDirection: WindDirection;
+  humidityPct: string;
+  pressureHpa: string;
+  rainChancePct: string;
+  roofState: "open" | "closed" | "none";
+}
+
+// ---------------------------------------------------------------------------
+// Modul 6: Ballpark
+// ---------------------------------------------------------------------------
+export interface BallparkInput {
+  runFactor: string;
+  hrFactor: string;
+  singlesFactor: string;
+  doublesFactor: string;
+  triplesFactor: string;
+  altitudeMeters: string;
+  leftFieldDistance: string;
+  rightFieldDistance: string;
+  dayNight: "day" | "night";
+}
+
+// ---------------------------------------------------------------------------
+// Modul 7: Head-to-Head
+// ---------------------------------------------------------------------------
+export interface H2HInput {
+  /** Gesamtpunkte (beide Teams) je Duell, letzte 10 */
+  last10TotalRuns: string[];
+  /** Gesamtpunkte (beide Teams) je Duell, letzte 20 */
+  last20TotalRuns: string[];
+  firstFiveInningsAvg: string;
+  extraInningsGames: string;
+}
+
+// ---------------------------------------------------------------------------
+// Modul 8: Marktanalyse
+// ---------------------------------------------------------------------------
+export interface MarketInput {
+  openingLine: string;
+  currentLine: string;
+  closingLine: string;
+  publicOverPct: string;
+  sharpOverPct: string;
+}
+
+// ---------------------------------------------------------------------------
+// Spiel-Setup (Dashboard-Kopf)
+// ---------------------------------------------------------------------------
+export interface GameSetup {
+  homeTeamName: string;
+  awayTeamName: string;
+  line: string;
+  bookmaker: string;
+  oddsOver: string;
+  oddsUnder: string;
+  bankroll: string;
+  isDoubleheader: boolean;
+  lineupsConfirmed: boolean;
+  pitcherConfirmed: boolean;
+  weatherConfirmed: boolean;
+  /**
+   * Prediction Engine PRO: Ob keine Verletzungssorgen bei Schlüsselspielern
+   * (Starting Pitcher, Kern-Lineup) bekannt sind. `true` = keine bekannten
+   * Probleme (Standardwert, keine Auswirkung). `false` = eine bekannte
+   * Verletzungssorge reduziert die Prediction-Confidence
+   * (`applyDynamicWeighting` in `@/engine/predictionEngine`).
+   */
+  noInjuryConcerns: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// Team-übergreifender State (je Team ein Satz aller Modul-Inputs)
+// ---------------------------------------------------------------------------
+export interface TeamAnalyzerState {
+  form: TeamFormInput;
+  pitcher: PitcherInput;
+  bullpen: BullpenInput;
+  offense: OffenseInput;
+}
+
+export interface AnalyzerState {
+  setup: GameSetup;
+  home: TeamAnalyzerState;
+  away: TeamAnalyzerState;
+  weather: WeatherInput;
+  ballpark: BallparkInput;
+  h2h: H2HInput;
+  market: MarketInput;
+}
+
+// ---------------------------------------------------------------------------
+// Modul-Ergebnisse (0–100 Score + abgeleiteter Erwartungswert für Runs)
+// ---------------------------------------------------------------------------
+export interface ModuleResult {
+  /** Eindeutiger Schlüssel des Moduls */
+  key: ModuleKey;
+  /** Anzeigename */
+  label: string;
+  /** Score von 0 (starkes Unter-Signal) bis 100 (starkes Über-Signal) */
+  score: number;
+  /** Gewichtung im Gesamtmodell (0–1) */
+  weight: number;
+  /** Ob genügend Daten für eine Berechnung vorhanden waren */
+  hasData: boolean;
+  /** Erwarteter Runs-Beitrag dieses Moduls (falls zutreffend), für Poisson-Modell */
+  expectedRuns: number | null;
+}
+
+export type ModuleKey =
+  | "form"
+  | "pitcher"
+  | "bullpen"
+  | "offense"
+  | "weather"
+  | "ballpark"
+  | "h2h"
+  | "market";
+
+// ---------------------------------------------------------------------------
+// Poisson-Modell-Ausgabe
+// ---------------------------------------------------------------------------
+export interface PoissonResult {
+  expectedRuns: number;
+  distribution: { runs: number; probability: number }[];
+  overProbability: number;
+  underProbability: number;
+  pushProbability: number;
+}
+
+// ---------------------------------------------------------------------------
+// Monte-Carlo-Simulationsausgabe
+// ---------------------------------------------------------------------------
+
+/**
+ * Monte Carlo PRO: Aufschlüsselung zusätzlicher Simulations-Streuung nach
+ * Ursprungs-Modul ("Run Environment"). Jeder Wert ist ein zusätzlicher
+ * Streuungsbeitrag in Runs (0 = kein zusätzlicher Beitrag durch dieses
+ * Modul).
+ */
+export interface RunEnvironmentVarianceComponents {
+  pitcher: number;
+  bullpen: number;
+  weather: number;
+  ballpark: number;
+  offense: number;
+}
+
+export interface MonteCarloResult {
+  simulations: number;
+  mean: number;
+  median: number;
+  min: number;
+  max: number;
+  ciLow: number;
+  ciHigh: number;
+  overProbability: number;
+  underProbability: number;
+  histogram: { bucket: number; count: number }[];
+  /** Monte Carlo PRO: Varianz der simulierten Gesamt-Runs. */
+  variance: number;
+  /** Monte Carlo PRO: Standardabweichung der simulierten Gesamt-Runs. */
+  stdDev: number;
+  /** Monte Carlo PRO: unteres Ende des 80 %-Konfidenzintervalls. */
+  ci80Low: number;
+  /** Monte Carlo PRO: oberes Ende des 80 %-Konfidenzintervalls. */
+  ci80High: number;
+  /** Monte Carlo PRO: normalisierte Wahrscheinlichkeits-Verteilungskurve (Histogramm als Anteile statt Zählwerte). */
+  distributionCurve: { bucket: number; probability: number }[];
+  /** Monte Carlo PRO: Über-Wahrscheinlichkeit laut Normal-Approximations-Modell (Vergleichsmodell). */
+  normalApproxOverProbability: number;
+  /** Monte Carlo PRO: Unter-Wahrscheinlichkeit laut Normal-Approximations-Modell. */
+  normalApproxUnderProbability: number;
+  /** Monte Carlo PRO: Stabilität der Simulation (0–100) via Split-Half-Vergleich. */
+  simulationConfidence: number;
+  /** Monte Carlo PRO: Übereinstimmung (0–100) zwischen Monte-Carlo- und geschlossener Poisson-Lösung. */
+  simulationAgreement: number;
+  /** Monte Carlo PRO: angewendete Streuungs-Aufschlüsselung nach Modul ("Run Environment"). */
+  varianceComponents: RunEnvironmentVarianceComponents;
+  /** Monte Carlo PRO: menschlich lesbare Zusammenfassung der dominierenden Unsicherheitsquellen. */
+  runEnvironmentNote: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Konsens-/Gesamt-Ergebnis
+// ---------------------------------------------------------------------------
+export interface ConsensusResult {
+  modules: ModuleResult[];
+  finalScore: number; // 0–100
+  pick: OUPick;
+  confidence: number; // 0–1, Wahrscheinlichkeit der gewählten Seite
+  stars: number; // 1–5
+}
+
+// ---------------------------------------------------------------------------
+// Bankroll / Kelly
+// ---------------------------------------------------------------------------
+export interface BankrollResult {
+  expectedValue: number; // in Einheiten des Einsatzes (z. B. 0.08 = +8 %)
+  valuePct: number; // Differenz Modellwahrscheinlichkeit vs. implizite Quote in %
+  kellyFraction: number; // 0–1
+  halfKellyFraction: number;
+  quarterKellyFraction: number;
+  flatStake: number;
+  kellyStake: number;
+  halfKellyStake: number;
+  quarterKellyStake: number;
+}
+export interface PremiumFilterChecks {
+  pitcherConfirmed: boolean;
+  lineupsConfirmed: boolean;
+  weatherConfirmed: boolean;
+  confidenceAtLeast85: boolean;
+  positiveExpectedValue: boolean;
+  positiveKelly: boolean;
+  noDoubleheader: boolean;
+  rainBelow60: boolean;
+}
+
+export interface PremiumFilterResult {
+  checks: PremiumFilterChecks;
+  allPassed: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// v5.0: Automatisches Laden, Qualitätsbewertung, Historie
+// ---------------------------------------------------------------------------
+
+/** Kennzeichnet für ein Datenfeld, ob es automatisch geladen werden konnte. */
+export type FieldSource = "api" | "manual" | "unavailable";
+
+export interface GameCardSummary {
+  gamePk: number;
+  gameDate: string;
+  status: string;
+  homeTeamId: number;
+  homeTeamName: string;
+  awayTeamId: number;
+  awayTeamName: string;
+  homeProbablePitcherId: number | null;
+  homeProbablePitcherName: string | null;
+  awayProbablePitcherId: number | null;
+  awayProbablePitcherName: string | null;
+  venueName: string;
+  line: number | null;
+  oddsOver: number | null;
+  oddsUnder: number | null;
+}
+
+export type QualityGrade = "A+" | "A" | "A-" | "B+" | "B" | "C" | "D";
+/**
+ * Premium Bet Engine PRO: sechsstufige Bewertungsskala.
+ * `"Pass"` bleibt als Legacy-Wert erhalten (wird von bereits gespeicherten
+ * `HistoryEntry`-Datensätzen aus früheren Versionen verwendet), fließt aber
+ * in keine neue Berechnung mehr ein — `assessPremiumBet()` (Paket 5)
+ * verwendet ausschließlich die sechs neuen Stufen.
+ */
+export type BetTier = "Elite Bet" | "Premium Bet" | "Strong Bet" | "Good Bet" | "Lean" | "Pass" | "No Bet";
+
+export interface QualityAssessment {
+  grade: QualityGrade;
+  tier: BetTier;
+}
+
+export interface LoadingStep {
+  label: string;
+  done: boolean;
+}
+
+export interface HistoryEntry {
+  id: string;
+  timestamp: string;
+  homeTeamName: string;
+  awayTeamName: string;
+  line: number;
+  pick: OUPick;
+  confidence: number;
+  grade: QualityGrade;
+  tier: BetTier;
+  state: AnalyzerState;
+}
+
+/** Zusätzliche, in v5.0 neu berechnete Kennzahlen jenseits der 8 Kern-Module. */
+export interface ExtendedMetrics {
+  expectedHomeRuns: number | null;
+  pitcherMatchupScore: number; // 0-100, entspricht dem Pitcher-Modul-Score
+  bullpenMatchupScore: number;
+  offenseMatchupScore: number;
+  lineupStrengthScore: number | null; // null, falls Lineup noch nicht veröffentlicht
+  momentumScore: number; // aus Serie + letzten 10 Spielen
+  recentFormScore: number; // aus Form-Modul-Score
+  travelFatigueNote: string | null;
+  restAdvantageNote: string | null;
+  umpireName: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Prediction Engine PRO: dynamische Gewichtung & erweiterte Prognose
+// ---------------------------------------------------------------------------
+
+/**
+ * Protokolliert eine einzelne dynamische Gewichtungsanpassung, die auf ein
+ * Modul angewendet wurde (z. B. "Ace-vs-Ace" erhöht das Pitcher-Gewicht).
+ * Dient der Nachvollziehbarkeit der dynamischen Gewichtung.
+ */
+export interface DynamicWeightingAdjustment {
+  moduleKey: ModuleKey;
+  /** Menschlich lesbare Begründung der Anpassung. */
+  reason: string;
+  /** Multiplikator, der auf das Basis-Gewicht des Moduls angewendet wurde. */
+  factor: number;
+}
+
+/**
+ * Erweiterte, professionelle Prognose-Ausgabe der Prediction Engine PRO.
+ * Baut auf Konsens/Poisson/Monte-Carlo/Bankroll auf, ohne deren
+ * Basisberechnung zu verändern — reine additive Veredelung.
+ */
+export interface AdvancedPrediction {
+  /** Modellseitig erwartete Runs des Heimteams (anteilige Aufteilung von `expectedTotal`). */
+  expectedRunsHome: number | null;
+  /** Modellseitig erwartete Runs des Auswärtsteams. */
+  expectedRunsAway: number | null;
+  /** Modellseitig erwartete Gesamt-Runs (identisch zu `finalExpectedRuns`). */
+  expectedTotal: number;
+  /** Über-Wahrscheinlichkeit, Konsens aus Poisson- und Monte-Carlo-Modell. */
+  probabilityOver: number;
+  /** Unter-Wahrscheinlichkeit, Konsens aus Poisson- und Monte-Carlo-Modell. */
+  probabilityUnder: number;
+  /** Confidence (0–1) nach Anwendung dynamischer Confidence-Penalties. */
+  confidence: number;
+  /** Buchstaben-Note der Prognosequalität (wiederverwendet `QualityGrade`). */
+  predictionGrade: QualityGrade;
+  /** Zusammengesetzter Premium-Score (0–100): je höher, desto handelbarer die Wette. */
+  premiumScore: number;
+  /** Risiko-Score (0–100): je höher, desto unsicherer/volatiler die Prognose. */
+  riskScore: number;
+  /** Differenz Modellwahrscheinlichkeit vs. implizite Buchmacher-Wahrscheinlichkeit, in Prozentpunkten. */
+  expectedEdge: number | null;
+  /** Erwarteter Wert (Expected Value) der gewählten Seite, in Prozent des Einsatzes. */
+  valueEdge: number | null;
+  /** Buchmacher-Marge (Vig) zwischen Über- und Unter-Quote, in Prozent. */
+  bookmakerEdge: number | null;
+  /** Modellseitig projizierte Closing Line auf Basis von Linienbewegung und Sharp-Money-Anteil. */
+  expectedClosingLine: number | null;
+  /** Line, bei der Über- und Unter-Wahrscheinlichkeit laut Modell exakt ausgeglichen wären. */
+  fairTotalLine: number;
+  /** Modell-Gesamtlinie, auf den nächsten Halbschritt gerundet (Sportsbook-Konvention). */
+  modelTotal: number;
+  /** Modellseitige Run-Differenz (Heim minus Auswärts). */
+  modelSpread: number | null;
+  /** Protokoll aller angewendeten dynamischen Gewichtungsanpassungen. */
+  weightingAdjustments: DynamicWeightingAdjustment[];
+  /** Menschlich lesbare Liste aller angewendeten Confidence-Abzüge. */
+  confidencePenalties: string[];
+  /**
+   * Confidence Engine PRO: vollständige, nachvollziehbare Aufschlüsselung
+   * der Confidence-Berechnung (siehe `@/engine/confidenceEngine`). `confidence`
+   * oben ist identisch zu `confidenceBreakdown.confidence` — bleibt als
+   * eigenes Feld erhalten für Abwärtskompatibilität mit bestehenden Lesern.
+   */
+  confidenceBreakdown: ConfidenceBreakdown;
+}
+
+/**
+ * Confidence Engine PRO: eine einzelne, in die Gesamt-Confidence
+ * eingehende Kennzahl mit ihrem Beitrag (Score 0–100) und Gewicht.
+ */
+export interface ConfidenceFactor {
+  key: string;
+  label: string;
+  /** Beitrag dieser Kennzahl, 0 (schlecht) – 100 (exzellent). */
+  score: number;
+  /** Gewicht dieser Kennzahl in der gewichteten Basis-Confidence. */
+  weight: number;
+  note: string;
+}
+
+/**
+ * Confidence Engine PRO: vollständige, professionelle Confidence-
+ * Berechnung. Kombiniert Datenqualität (Pitcher/Bullpen/Offense/Weather/
+ * Market), API-/Modul-Vollständigkeit, Simulationsqualität (Monte Carlo
+ * PRO), Modul-Konsens, optional Historical Accuracy sowie harte,
+ * ausschließlich verringernde Penalties (fehlende Lineup-Bestätigung,
+ * Verletzungssorgen, fehlende Kernmodul-Daten, gegenläufige
+ * Linienbewegung) — damit die Confidence niemals künstlich hoch ist.
+ */
+export interface ConfidenceBreakdown {
+  /** Finaler Confidence-Score, 0–100. */
+  score: number;
+  /** Identisch zu `score / 100`, für Kompatibilität mit bestehenden 0–1-Confidence-Werten. */
+  confidence: number;
+  grade: QualityGrade;
+  factors: ConfidenceFactor[];
+  penalties: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Premium Bet Engine PRO
+// ---------------------------------------------------------------------------
+
+/** Einzelne, in die Premium-Bet-Bewertung eingehende Kennzahl. */
+export interface PremiumBetFactor {
+  key: string;
+  label: string;
+  /** Beitrag dieser Kennzahl, 0 (schlecht) – 100 (exzellent). `null`, wenn die Kennzahl nicht verfügbar war (fließt dann nicht ein). */
+  score: number | null;
+  weight: number;
+  note: string;
+}
+
+/**
+ * Vollständige Premium-Bet-Bewertung: kombiniert Edge, Confidence,
+ * Consensus, Simulationsqualität, Historical Accuracy (falls verfügbar),
+ * Market-Datenqualität, Closing-Line-Ausrichtung, Expected Value und
+ * Bookmaker Edge zu einem zusammengesetzten 0–100-"Bettability"-Score,
+ * der zusammen mit den harten Premium-Filter-Prüfungen die sechsstufige
+ * `BetTier`-Einordnung ergibt.
+ */
+export interface PremiumBetAssessment {
+  tier: BetTier;
+  grade: QualityGrade;
+  /** Zusammengesetzter "Bettability"-Score, 0–100. */
+  score: number;
+  factors: PremiumBetFactor[];
+  /** Menschlich lesbare Begründung, warum diese Stufe vergeben wurde. */
+  reasons: string[];
+  warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Historical Calibration PRO
+// ---------------------------------------------------------------------------
+
+/**
+ * Multiplikative Gewichtungs-Anpassung je Modul, aus historischen
+ * Backtest-Ergebnissen abgeleitet (siehe
+ * `@/backtesting/historicalCalibration`). Wird optional zusätzlich zur
+ * dynamischen Gewichtung (Paket 2) in `computeFullAnalysis()` angewendet.
+ * Ein Wert von `1` bedeutet keine Anpassung.
+ */
+export interface ModuleWeightMultipliers {
+  form: number;
+  pitcher: number;
+  bullpen: number;
+  offense: number;
+  weather: number;
+  ballpark: number;
+  h2h: number;
+  market: number;
+}
+
