@@ -1202,3 +1202,63 @@ export interface AdaptiveIntelligenceResult {
   adaptiveWeightingApplied: boolean;
   notes: string[];
 }
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 3 — Prediction Intelligence PRO
+// ---------------------------------------------------------------------------
+
+export type SignalStrengthLabel = "schwach" | "mittel" | "stark" | "extrem stark";
+
+/** Schritt 4: Gesamtbewertung der Signal-Stärke dieser Prognose. */
+export interface SignalStrengthAssessment {
+  score: number;
+  label: SignalStrengthLabel;
+  contributingFactors: string[];
+}
+
+/** Schritt 3: eine erkannte Richtungs-Divergenz zwischen zwei Wahrscheinlichkeits-/Signalquellen. */
+export interface DetectedConflict {
+  sourceA: string;
+  sourceB: string;
+  description: string;
+}
+
+/** Schritt 3: Zusammenfassung aller erkannten Konflikte zwischen Modulen/Quellen. */
+export interface ConflictAnalysis {
+  conflicts: DetectedConflict[];
+  conflictSeverity: number;
+  confidenceReductionPct: number;
+}
+
+/**
+ * Schritt 2: kontinuierliches (nicht hartcodiertes) Umfeld-Signal aus
+ * Offense/Pitcher/Bullpen/Ballpark/Wind/Temperatur — verallgemeinert die
+ * in Prediction Engine 2.0 fest programmierten Referenz-Synergien zu
+ * einer graduellen, datengetriebenen Bewertung.
+ */
+export interface EnvironmentalSignal {
+  leaning: number;
+  direction: "over" | "under" | "neutral";
+  contributingFactors: string[];
+}
+
+export type ExtremeCaseCategory = "extremes Over-Spiel" | "extremes Under-Spiel" | "hohes Risiko" | "schlechte Datenlage" | "ungewöhnliche Spielsituation";
+
+export interface ExtremeCaseFlag {
+  category: ExtremeCaseCategory;
+  description: string;
+}
+
+/**
+ * Vollständiges Ergebnis der Prediction Intelligence PRO (Version 6.0,
+ * Paket 3). Rein additiv — ersetzt keine bestehende Berechnung.
+ */
+export interface PredictionIntelligenceProResult {
+  /** Schritt 5: Korrektur der Prediction-Engine-2.0-Verstärkung um einen Konsens-Breiten-Faktor (behebt die identifizierte Unter-Trennung bei vielen moderat übereinstimmenden Modulen). */
+  breadthCorrectedScore: number;
+  consensusBreadthFactor: number;
+  environmentalSignal: EnvironmentalSignal;
+  conflictAnalysis: ConflictAnalysis;
+  signalStrength: SignalStrengthAssessment;
+  extremeCases: ExtremeCaseFlag[];
+  notes: string[];
+}

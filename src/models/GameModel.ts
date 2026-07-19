@@ -12,6 +12,7 @@ import type {
   OffenseQualityAssessment,
   PoissonResult,
   PredictionEngine2Result,
+  PredictionIntelligenceProResult,
   PremiumBetAssessment,
   PremiumFilterResult,
 } from "@/types";
@@ -47,6 +48,7 @@ import { assessPremiumBet } from "@/engine/premiumBetEngine";
 import { buildDecisionSupportSummary } from "@/engine/decisionSupport";
 import { computePredictionEngine2 } from "@/engine/predictionEngine2";
 import { computeAdaptiveIntelligence } from "@/engine/adaptiveIntelligenceEngine";
+import { computePredictionIntelligencePro } from "@/engine/predictionIntelligencePro";
 import { toNumber, weightedAverage } from "@/utils/math";
 
 export interface FullAnalysis {
@@ -121,6 +123,14 @@ export interface FullAnalysis {
    * `@/engine/adaptiveIntelligenceEngine`.
    */
   adaptiveIntelligence: AdaptiveIntelligenceResult;
+  /**
+   * Version 6.0 (Paket 3): Prediction Intelligence PRO — Konsens-
+   * Breiten-Korrektur (behebt eine nachgewiesene Unter-Trennung bei
+   * vielen moderat übereinstimmenden Modulen), kontinuierliches
+   * Umfeld-Signal, Konflikt-Erkennung, Signal-Stärke-Klassifikation und
+   * Extremfall-Erkennung. Siehe `@/engine/predictionIntelligencePro`.
+   */
+  predictionIntelligencePro: PredictionIntelligenceProResult;
 }
 
 /**
@@ -411,6 +421,27 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     predictionEngine2,
   });
 
+  // Version 6.0, Paket 3: Prediction Intelligence PRO — rein additiv,
+  // nutzt ausschließlich bereits vorhandene Werte (Module, Poisson,
+  // Monte Carlo, Pitcher-/Bullpen-/Offense-PRO-Qualität, Wetter/
+  // Ballpark, Prediction Engine 2.0, Consensus, Prediction Summary).
+  const predictionIntelligencePro = computePredictionIntelligencePro({
+    modules: calibratedModules,
+    poisson,
+    montecarlo,
+    homePitcherQuality,
+    awayPitcherQuality,
+    homeBullpenQuality,
+    awayBullpenQuality,
+    homeOffenseQuality,
+    awayOffenseQuality,
+    weather: state.weather,
+    ballpark: state.ballpark,
+    enhancedScore: predictionEngine2.enhancedScore,
+    linearScore: consensus.finalScore,
+    dataQualityPct: advancedPrediction.predictionSummary.dataQualityPct,
+  });
+
   return {
     modules: calibratedModules,
     consensus,
@@ -427,5 +458,6 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     decisionSupport,
     predictionEngine2,
     adaptiveIntelligence,
+    predictionIntelligencePro,
   };
 }
