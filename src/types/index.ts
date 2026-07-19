@@ -1086,3 +1086,51 @@ export interface SystemStatusSummary {
   warnings: SmartWarning[];
   apiHealth: ApiHealthReport;
 }
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 1 — Prediction Engine 2.0 & Confidence Engine 2.0
+// ---------------------------------------------------------------------------
+
+/**
+ * Eine erkannte Modul-Synergie (Schritt 3): eine Kombination mehrerer
+ * Module, die gemeinsam deutlich stärker in dieselbe Richtung sprechen,
+ * als es die einfache gewichtete Summe der Einzelmodule ausdrücken würde.
+ * Wird ausschließlich aus bereits vorhandenen Modul-/Qualitäts-Scores
+ * abgeleitet — keine neue Datenquelle.
+ */
+export interface ModuleSynergy {
+  name: string;
+  direction: "over" | "under";
+  description: string;
+  /** Bonus in Score-Punkten (0–100-Skala), der Richtung `direction` angewendet wurde. */
+  bonus: number;
+}
+
+/**
+ * Ergebnis der nicht-linearen Modul-Kombination (Schritt 2). Ersetzt
+ * NICHT `ConsensusResult.finalScore` (bleibt unverändert bestehen,
+ * weiterhin von Premium Filter/Dashboard genutzt) — reine additive
+ * Zweitberechnung mit stärkerer Trennung zwischen starken und schwachen
+ * Signalen sowie erkannten Synergien.
+ */
+export interface PredictionEngine2Result {
+  /** Nicht-linear kombinierter Score, 0–100 (inkl. Synergie-Bonus). */
+  enhancedScore: number;
+  /** `ConsensusResult.finalScore` zum Vergleich — unverändert übernommen. */
+  linearScore: number;
+  /** Differenz zwischen nicht-linearer Amplifikation und linearem Score, vor Synergien. */
+  amplificationDelta: number;
+  synergies: ModuleSynergy[];
+  /** Summe aller Synergie-Boni (positiv = Richtung Over, negativ = Richtung Under). */
+  synergyBonus: number;
+  /** Confidence Engine 2.0: nicht-linear angepasste Confidence, 0–1. */
+  nonLinearConfidence: number;
+  /** Ursprüngliche (lineare) Confidence aus der bestehenden Confidence Engine, zum Vergleich. */
+  linearConfidence: number;
+  /** Gewichteter Grad der Richtungs-Übereinstimmung aller aktiven Module, -1 (Widerspruch) … 1 (volle Übereinstimmung). */
+  moduleAgreementRatio: number;
+  /** Ob eine historische Kalibrierung (Schritt 5) für diese Berechnung verfügbar war. */
+  calibrationApplied: boolean;
+  /** Schritt 6: Plausibilitäts-Hinweis, ob die verstärkte Einschätzung mit dem Poisson-Modell übereinstimmt. */
+  fairProbabilityNote: string;
+  notes: string[];
+}

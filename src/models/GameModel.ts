@@ -10,6 +10,7 @@ import type {
   MonteCarloResult,
   OffenseQualityAssessment,
   PoissonResult,
+  PredictionEngine2Result,
   PremiumBetAssessment,
   PremiumFilterResult,
 } from "@/types";
@@ -43,6 +44,7 @@ import {
 } from "@/engine/predictionEngine";
 import { assessPremiumBet } from "@/engine/premiumBetEngine";
 import { buildDecisionSupportSummary } from "@/engine/decisionSupport";
+import { computePredictionEngine2 } from "@/engine/predictionEngine2";
 import { toNumber, weightedAverage } from "@/utils/math";
 
 export interface FullAnalysis {
@@ -98,6 +100,15 @@ export interface FullAnalysis {
    * `@/engine/decisionSupport`.
    */
   decisionSupport: DecisionSupportSummary;
+  /**
+   * Version 6.0 (Paket 1): Prediction Engine 2.0 + Confidence Engine 2.0
+   * — nicht-lineare Zweitberechnung (stärkere Trennung starker/schwacher
+   * Signale, Modul-Synergien, nicht-lineare Confidence). Rein additiv:
+   * `consensus`/`advancedPrediction` oben bleiben unverändert die
+   * maßgebliche Quelle für Premium Filter/Dashboard. Siehe
+   * `@/engine/predictionEngine2`.
+   */
+  predictionEngine2: PredictionEngine2Result;
 }
 
 /**
@@ -349,6 +360,30 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     montecarlo,
   });
 
+  // Version 6.0, Paket 1: Prediction Engine 2.0 + Confidence Engine 2.0 —
+  // rein additive Zweitberechnung auf Basis der bereits vorhandenen,
+  // unveränderten Ergebnisse (Module, Consensus, Confidence Engine,
+  // Poisson, Pitcher-/Bullpen-/Offense-PRO-Qualitätsbewertungen).
+  // `historicalValidationAccuracyPct` ist bei einer Live-Einzelspiel-
+  // Analyse bewusst `null` (kein vorheriger Backtest-Lauf verfügbar),
+  // identisch zum bereits etablierten Muster bei `historicalAccuracyPct`
+  // weiter oben in dieser Funktion.
+  const predictionEngine2 = computePredictionEngine2({
+    modules: calibratedModules,
+    consensus,
+    confidenceBreakdown: advancedPrediction.confidenceBreakdown,
+    poisson,
+    homePitcherQuality,
+    awayPitcherQuality,
+    homeBullpenQuality,
+    awayBullpenQuality,
+    homeOffenseQuality,
+    awayOffenseQuality,
+    weather: state.weather,
+    ballpark: state.ballpark,
+    historicalValidationAccuracyPct: null,
+  });
+
   return {
     modules: calibratedModules,
     consensus,
@@ -363,5 +398,6 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     advancedPrediction,
     premiumBetAssessment,
     decisionSupport,
+    predictionEngine2,
   };
 }
