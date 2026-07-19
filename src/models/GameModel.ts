@@ -1,4 +1,5 @@
 import type {
+  AdaptiveIntelligenceResult,
   AdvancedPrediction,
   AnalyzerState,
   BankrollResult,
@@ -45,6 +46,7 @@ import {
 import { assessPremiumBet } from "@/engine/premiumBetEngine";
 import { buildDecisionSupportSummary } from "@/engine/decisionSupport";
 import { computePredictionEngine2 } from "@/engine/predictionEngine2";
+import { computeAdaptiveIntelligence } from "@/engine/adaptiveIntelligenceEngine";
 import { toNumber, weightedAverage } from "@/utils/math";
 
 export interface FullAnalysis {
@@ -109,6 +111,16 @@ export interface FullAnalysis {
    * `@/engine/predictionEngine2`.
    */
   predictionEngine2: PredictionEngine2Result;
+  /**
+   * Version 6.0 (Paket 2): Adaptive Intelligence Engine — Bayesianische
+   * Wahrscheinlichkeits-Kombination (immer aktiv) sowie adaptive
+   * Gewichtung/Self-Learning-Synergien/Confidence-Kalibrierung (aktiv,
+   * sobald historische Backtest-Daten verfügbar sind — bei einer
+   * Live-Einzelspiel-Analyse ohne vorherigen Backtest-Lauf bewusst
+   * neutral/inaktiv statt erfunden). Siehe
+   * `@/engine/adaptiveIntelligenceEngine`.
+   */
+  adaptiveIntelligence: AdaptiveIntelligenceResult;
 }
 
 /**
@@ -384,6 +396,21 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     historicalValidationAccuracyPct: null,
   });
 
+  // Version 6.0, Paket 2: Adaptive Intelligence Engine — die
+  // Bayesianische Wahrscheinlichkeits-Kombination ist immer aktiv
+  // (nutzt ausschließlich bereits live vorhandene Werte). Die
+  // historien-abhängigen Teile (adaptive Gewichtung, gelernte
+  // Synergien, Confidence-Kalibrierungskurve) erhalten bei einer
+  // Live-Einzelspiel-Analyse bewusst keine Daten (`undefined`) — kein
+  // vorheriger Backtest-Lauf verfügbar, identisch zum bereits
+  // etablierten Muster bei `historicalValidationAccuracyPct` oben.
+  const adaptiveIntelligence = computeAdaptiveIntelligence({
+    modules: calibratedModules,
+    poisson,
+    montecarlo,
+    predictionEngine2,
+  });
+
   return {
     modules: calibratedModules,
     consensus,
@@ -399,5 +426,6 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     premiumBetAssessment,
     decisionSupport,
     predictionEngine2,
+    adaptiveIntelligence,
   };
 }

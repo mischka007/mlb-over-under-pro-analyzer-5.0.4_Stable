@@ -1134,3 +1134,71 @@ export interface PredictionEngine2Result {
   fairProbabilityNote: string;
   notes: string[];
 }
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 2 — Adaptive Intelligence Engine
+// ---------------------------------------------------------------------------
+
+/** Eine einzelne Wahrscheinlichkeits-Quelle, die in die Bayesianische Kombination eingeht. */
+export interface BayesianProbabilitySource {
+  source: string;
+  probability: number;
+  weight: number;
+  logOdds: number;
+}
+
+/**
+ * Schritt 4+7: Bayesianisch (log-odds-basiert) kombinierte Über-
+ * Wahrscheinlichkeit aus Poisson, Monte Carlo und Prediction Engine 2.0.
+ * Ersetzt NICHT `AdvancedPrediction.probabilityOver` (bleibt unverändert
+ * bestehen) — reine additive Zweitberechnung mit stärkerer Trennung bei
+ * übereinstimmenden starken Signalen und Dämpfung bei Widersprüchen.
+ */
+export interface BayesianProbabilityUpdate {
+  bayesianOverProbability: number;
+  bayesianUnderProbability: number;
+  sources: BayesianProbabilitySource[];
+  /** Grad der Übereinstimmung der Quellen, 0 (Widerspruch) – 1 (volle Übereinstimmung). */
+  sourceAgreement: number;
+  /** Differenz zwischen der bayesianischen und der linear gemittelten Quellen-Wahrscheinlichkeit. */
+  separationDelta: number;
+}
+
+/** Schritt 2: adaptiv angepasstes Gewicht eines Moduls, aus nachgewiesener historischer Qualität abgeleitet. */
+export interface AdaptiveModuleWeight {
+  moduleKey: ModuleKey;
+  label: string;
+  baseWeight: number;
+  adaptiveMultiplier: number;
+  adjustedWeight: number;
+  reason: string;
+}
+
+/** Schritt 3+6: eine aus historischen Backtest-Daten gelernte (nicht fest programmierte) Modul-Synergie. */
+export interface LearnedSynergy {
+  moduleKeys: [ModuleKey, ModuleKey];
+  direction: "over" | "under";
+  historicalHitRate: number;
+  sampleSize: number;
+  bonus: number;
+  description: string;
+}
+
+/**
+ * Vollständiges Ergebnis der Adaptive Intelligence Engine (Version 6.0,
+ * Paket 2). Historien-abhängige Teile (`adaptiveWeights` mit echtem
+ * Multiplikator, `learnedSynergies`, `calibrationApplied`) bleiben
+ * inaktiv (neutrale Werte, `applied: false`), wenn keine historischen
+ * Backtest-Daten übergeben wurden — kein erfundener Wert. Die
+ * Bayesianische Wahrscheinlichkeits-Kombination ist immer aktiv, da sie
+ * ausschließlich bereits live vorhandene Werte (Poisson/Monte
+ * Carlo/Prediction Engine 2.0) nutzt.
+ */
+export interface AdaptiveIntelligenceResult {
+  bayesianUpdate: BayesianProbabilityUpdate;
+  adaptiveWeights: AdaptiveModuleWeight[];
+  learnedSynergies: LearnedSynergy[];
+  calibratedConfidence: number;
+  calibrationApplied: boolean;
+  adaptiveWeightingApplied: boolean;
+  notes: string[];
+}
