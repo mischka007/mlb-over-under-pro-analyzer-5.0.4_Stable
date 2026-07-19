@@ -839,6 +839,19 @@ export interface ModuleBacktestPerformance {
   label: string;
   /** Durchschnitt von `weight * (score - 50)` über alle Spiele mit Daten für dieses Modul. */
   averageInfluence: number;
+  /** Durchschnittlicher positiver Einfluss (nur Spiele mit Über-Richtung dieses Moduls). 0, wenn keine vorliegen. */
+  averagePositiveInfluence: number;
+  /** Durchschnittlicher negativer Einfluss (nur Spiele mit Unter-Richtung dieses Moduls). 0, wenn keine vorliegen. */
+  averageNegativeInfluence: number;
+  /**
+   * Durchschnittlicher Fehler (Brier-Score-Prinzip): Abweichung zwischen
+   * der aus dem Modul-Score abgeleiteten Über-Wahrscheinlichkeit und dem
+   * tatsächlichen Ergebnis, quadriert und gemittelt. 0 = perfekt, 1 =
+   * maximal falsch.
+   */
+  averageError: number;
+  /** Stabilität des Moduls (0–100): je geringer die Streuung des Einflusses über die Spiele, desto höher. */
+  stability: number;
   /** Durchschnittliches tatsächliches Gewicht (0–1) dieses Moduls im Konsens über alle Spiele mit Daten. */
   averageWeight: number;
   /** Anzahl Spiele, in denen dieses Modul Richtung Over ausschlug. */
@@ -897,4 +910,54 @@ export interface BacktestTimeSeriesPoint {
   index: number;
   date: string;
   value: number;
+}
+// ---------------------------------------------------------------------------
+// Tag 7 — Model Optimization & Self-Learning Analytics
+// ---------------------------------------------------------------------------
+
+/**
+ * Gewichtungs-Analyse eines einzelnen Moduls: aktuelles vs. optimales
+ * Gewicht (aus der bestehenden Historical-Calibration-PRO-Engine, siehe
+ * `@/backtesting/historicalCalibration`), empfohlene Änderung sowie die
+ * dadurch erwartete Verbesserung der Validierungs-Trefferquote. Rein
+ * informativ — passt selbst keine Gewichte an.
+ */
+export interface ModuleWeightingAnalysis {
+  moduleKey: ModuleKey;
+  label: string;
+  currentWeight: number;
+  optimalWeight: number;
+  /** Empfohlene Änderung in Prozent des aktuellen Gewichts (z. B. +15 = 15 % Erhöhung). */
+  recommendedChangePct: number;
+  /** Erwartete Verbesserung der Validierungs-Trefferquote in Prozentpunkten bei Übernahme der Kalibrierung. */
+  expectedImprovementPct: number;
+}
+
+/** Automatisch erkannte, häufige Fehlerursache verlorener Predictions. */
+export interface ErrorCauseCategory {
+  moduleKey: ModuleKey;
+  label: string;
+  description: string;
+  count: number;
+  /** Anteil (0–100) an allen verlorenen, ausgewerteten Predictions. */
+  pct: number;
+}
+
+/** Vergleich vorhergesagter Confidence mit tatsächlicher Trefferquote in einem Bereich. */
+export interface ConfidenceCalibrationPoint {
+  bucket: string;
+  predictedPct: number;
+  actualPct: number;
+  /** `actualPct - predictedPct`, in Prozentpunkten. Negativ = Modell überschätzt seine eigene Confidence. */
+  gap: number;
+  decidedBets: number;
+}
+
+/** Zusammengesetzte Modellqualitäts-Bewertung aus Genauigkeit, Confidence-Kalibrierung und Modul-Stabilität. */
+export interface ModelQualitySummary {
+  overallScore: number;
+  grade: QualityGrade;
+  accuracyScore: number;
+  calibrationScore: number;
+  stabilityScore: number;
 }

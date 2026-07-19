@@ -20,6 +20,8 @@ import { Badge, Card, SectionHeader } from "@/components/common/UI";
 import { BacktestManager } from "@/backtesting/backtestManager";
 import { buildBacktestDataset } from "@/backtesting/backtestingDatasetBuilder";
 import { buildBacktestingDashboardData, type BacktestingDashboardData } from "@/backtesting/backtestingDashboardAnalytics";
+import { buildModelOptimizationData, type ModelOptimizationData } from "@/backtesting/modelOptimizationAnalytics";
+import { runHistoricalCalibration } from "@/backtesting/historicalCalibration";
 import { exportBacktestDatasetAsCsv, exportBacktestDatasetAsJson } from "@/utils/backtestExport";
 import { exportElementAsPdf } from "@/utils/pdfExport";
 
@@ -76,10 +78,12 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
   const [endDate, setEndDate] = useState(defaultEndDate());
   const [line, setLine] = useState("8.5");
   const [odds, setOdds] = useState("1.91");
+  const [runCalibration, setRunCalibration] = useState(false);
 
   const [isRunning, setIsRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<BacktestingDashboardData | null>(null);
+  const [modelOptimization, setModelOptimization] = useState<ModelOptimizationData | null>(null);
   const [loadedGameCount, setLoadedGameCount] = useState(0);
 
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -89,6 +93,7 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
     setIsRunning(true);
     setError(null);
     setData(null);
+    setModelOptimization(null);
 
     try {
       const parsedStart = new Date(`${startDate}T12:00:00`);
@@ -116,6 +121,20 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
       const records = buildBacktestDataset(dataset.states, dataset.backtestGames);
       const dashboardData = buildBacktestingDashboardData(records);
       setData(dashboardData);
+
+      // Model Optimization (Tag 7): die Gewichtungsanalyse (Schritt 3) nutzt
+      // die bereits bestehende Historical-Calibration-PRO-Engine, die
+      // intern einen eigenen, zweiten Analyse-Durchlauf über alle Spiele
+      // macht — deshalb bewusst optional (Checkbox), damit der normale
+      // Backtest nicht standardmäßig doppelt rechnet.
+      const calibrationResult = runCalibration ? runHistoricalCalibration(dataset.states, dataset.backtestGames) : null;
+      const optimizationData = buildModelOptimizationData({
+        records,
+        modulePerformance: dashboardData.modulePerformance,
+        summary: dashboardData.summary,
+        calibration: calibrationResult,
+      });
+      setModelOptimization(optimizationData);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler beim Backtest.");
     } finally {
@@ -163,6 +182,15 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
           <NumberField label="Wettlinie (Standard)" value={line} onChange={setLine} step="0.5" />
           <NumberField label="Quote (Standard)" value={odds} onChange={setOdds} step="0.01" />
         </div>
+        <label className="mt-3 flex items-center gap-2 font-mono text-[11px] text-slate-400 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={runCalibration}
+            onChange={(e) => setRunCalibration(e.target.checked)}
+            className="accent-gold-500"
+          />
+          Gewichtungsanalyse berechnen (Historical Calibration PRO — zweiter Analyse-Durchlauf, dauert länger)
+        </label>
         <button
           onClick={runBacktest}
           disabled={isRunning}
@@ -201,7 +229,186 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
           <RecommendationsPanel data={data} />
         </div>
       )}
+
+      {modelOptimization && (
+        <div className="space-y-4">
+          <ModelQualityPanel optimization={modelOptimization} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <ConfidenceCalibrationChart optimization={modelOptimization} />
+            <StrongestWeakestModulesPanel optimization={modelOptimization} />
+          </div>
+          <ErrorCausesPanel optimization={modelOptimization} />
+          <WeightingAnalysisTable optimization={modelOptimization} />
+        </div>
+      )}
     </div>
+  );
+}
+
+function ModelQualityPanel({ optimization }: { optimization: ModelOptimizationData }) {
+  const q = optimization.modelQuality;
+  const toneForScore = (score: number): "green" | "gold" | "red" => (score >= 70 ? "green" : score >= 50 ? "gold" : "red");
+
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={TrendingUp} title="Modellqualität" accent="gold" />
+      <div className="flex items-center gap-3 mb-4">
+        <span className="font-numeric text-4xl leading-none text-slate-100">{q.overallScore.toFixed(0)}</span>
+        <Badge tone={toneForScore(q.overallScore)}>{q.grade}</Badge>
+      </div>
+      <div className="grid grid-cols-3 gap-4">
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Genauigkeit</div>
+          <div className="font-numeric text-xl text-slate-100">{q.accuracyScore.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Kalibrierung</div>
+          <div className="font-numeric text-xl text-slate-100">{q.calibrationScore.toFixed(0)}</div>
+        </div>
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Stabilität</div>
+          <div className="font-numeric text-xl text-slate-100">{q.stabilityScore.toFixed(0)}</div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ConfidenceCalibrationChart({ optimization }: { optimization: ModelOptimizationData }) {
+  const chartData = optimization.confidenceCalibration.map((c) => ({
+    bucket: c.bucket,
+    Vorhergesagt: c.predictedPct,
+    Tatsächlich: c.actualPct,
+  }));
+
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Confidence-Kalibrierung" accent="teal" />
+      <p className="font-mono text-[10px] text-slate-500 mb-2">Vorhergesagte Confidence vs. tatsächliche Trefferquote je Bereich.</p>
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="bucket" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis
+              tick={{ fill: CHART_COLORS.muted, fontSize: 10 }}
+              axisLine={{ stroke: CHART_COLORS.gridLine }}
+              tickLine={false}
+              unit="%"
+              domain={[0, 100]}
+            />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(1)} %`} />
+            <Legend wrapperStyle={{ fontSize: 11, color: CHART_COLORS.text }} />
+            <Bar dataKey="Vorhergesagt" fill={CHART_COLORS.muted} radius={[3, 3, 0, 0]} />
+            <Bar dataKey="Tatsächlich" fill={CHART_COLORS.gold} radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <TableShell headers={["Bereich", "Vorhergesagt", "Tatsächlich", "Abweichung", "Wetten"]}>
+        {optimization.confidenceCalibration.map((c) => (
+          <tr key={c.bucket} className="border-t border-base-600/60">
+            <td className="py-2 px-2 font-mono text-xs text-slate-200">{c.bucket}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.predictedPct.toFixed(0)} %</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.decidedBets > 0 ? `${c.actualPct.toFixed(1)} %` : "–"}</td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${Math.abs(c.gap) <= 5 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {c.decidedBets > 0 ? `${c.gap >= 0 ? "+" : ""}${c.gap.toFixed(1)} pp` : "–"}
+            </td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.decidedBets}</td>
+          </tr>
+        ))}
+      </TableShell>
+    </Card>
+  );
+}
+
+function StrongestWeakestModulesPanel({ optimization }: { optimization: ModelOptimizationData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={TrendingUp} title="Stärkste / schwächste Module" accent="gold" />
+      <div className="space-y-4">
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-posgreen-400 mb-1.5">Stärkste Module</div>
+          <ul className="space-y-1">
+            {optimization.strongestModules.length === 0 && <li className="font-mono text-[11px] text-slate-500">Noch nicht genügend Daten.</li>}
+            {optimization.strongestModules.map((m) => (
+              <li key={m.moduleKey} className="flex items-center justify-between font-mono text-xs text-slate-300">
+                <span>{m.label}</span>
+                <span className="text-posgreen-400">ROI {(m.roi * 100).toFixed(1)} %</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-negred-400 mb-1.5">Schwächste Module</div>
+          <ul className="space-y-1">
+            {optimization.weakestModules.length === 0 && <li className="font-mono text-[11px] text-slate-500">Noch nicht genügend Daten.</li>}
+            {optimization.weakestModules.map((m) => (
+              <li key={m.moduleKey} className="flex items-center justify-between font-mono text-xs text-slate-300">
+                <span>{m.label}</span>
+                <span className="text-negred-400">ROI {(m.roi * 100).toFixed(1)} %</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ErrorCausesPanel({ optimization }: { optimization: ModelOptimizationData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Fehleranalyse (verlorene Predictions)" accent="teal" />
+      {optimization.errorCauses.length === 0 ? (
+        <p className="font-mono text-xs text-slate-500">Noch keine verlorenen Predictions mit erkennbarer Fehlerursache im Zeitraum.</p>
+      ) : (
+        <ul className="space-y-2">
+          {optimization.errorCauses.map((cause) => (
+            <li key={`${cause.moduleKey}-${cause.label}`} className="font-mono text-xs text-slate-300">
+              <div className="flex items-center justify-between mb-0.5">
+                <span>{cause.label}</span>
+                <Badge tone="red">
+                  {cause.count}× ({cause.pct.toFixed(1)} %)
+                </Badge>
+              </div>
+              <p className="text-[10px] text-slate-500">{cause.description}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function WeightingAnalysisTable({ optimization }: { optimization: ModelOptimizationData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={BarChart3} title="Optimale Gewichtungen" accent="gold" />
+      <p className="font-mono text-[10px] text-slate-500 mb-3">{optimization.calibrationNote}</p>
+      {optimization.weightingAnalysis.length > 0 && (
+        <TableShell headers={["Modul", "Aktuelles Gewicht", "Optimales Gewicht", "Empfohlene Änderung", "Erw. Verbesserung"]}>
+          {optimization.weightingAnalysis.map((w) => (
+            <tr key={w.moduleKey} className="border-t border-base-600/60">
+              <td className="py-2 px-2 font-mono text-xs text-slate-200">{w.label}</td>
+              <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{(w.currentWeight * 100).toFixed(1)} %</td>
+              <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{(w.optimalWeight * 100).toFixed(1)} %</td>
+              <td
+                className={`py-2 px-2 font-mono text-xs text-right ${
+                  w.recommendedChangePct > 0.5 ? "text-posgreen-400" : w.recommendedChangePct < -0.5 ? "text-negred-400" : "text-slate-400"
+                }`}
+              >
+                {w.recommendedChangePct >= 0 ? "+" : ""}
+                {w.recommendedChangePct.toFixed(1)} %
+              </td>
+              <td className={`py-2 px-2 font-mono text-xs text-right ${w.expectedImprovementPct >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+                {w.expectedImprovementPct >= 0 ? "+" : ""}
+                {w.expectedImprovementPct.toFixed(1)} pp
+              </td>
+            </tr>
+          ))}
+        </TableShell>
+      )}
+    </Card>
   );
 }
 

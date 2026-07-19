@@ -10,7 +10,7 @@ import type {
   ModuleKey,
   PremiumFilterEfficacyStat,
 } from "@/types";
-import { mean } from "@/utils/math";
+import { clamp, mean, stdDev } from "@/utils/math";
 
 /**
  * Backtesting PRO Phase 3 + Tag 6 (Historical Validation): Dashboard-
@@ -216,6 +216,27 @@ export function computeModulePerformance(records: BacktestDatasetRecord[]): Modu
     const averageInfluence = entriesWithData.length > 0 ? mean(entriesWithData.map((e) => e.influence.influence)) : 0;
     const averageWeight = entriesWithData.length > 0 ? mean(entriesWithData.map((e) => e.influence.weight)) : 0;
 
+    const positiveInfluenceValues = entriesWithData.filter((e) => e.influence.influence > 0).map((e) => e.influence.influence);
+    const negativeInfluenceValues = entriesWithData.filter((e) => e.influence.influence < 0).map((e) => e.influence.influence);
+    const averagePositiveInfluence = positiveInfluenceValues.length > 0 ? mean(positiveInfluenceValues) : 0;
+    const averageNegativeInfluence = negativeInfluenceValues.length > 0 ? mean(negativeInfluenceValues) : 0;
+
+    // Brier-Score-Prinzip: bildet den Modul-Score (0-100) linear auf eine
+    // Über-Wahrscheinlichkeit (0-1) ab und vergleicht sie quadriert mit
+    // dem tatsächlichen Ergebnis — Standardmaß für die Güte einer
+    // probabilistischen Einschätzung.
+    const errorValues = entriesWithData.map((e) => {
+      const impliedOverProbability = 0.5 + clamp(e.influence.score - 50, -50, 50) / 100;
+      const actualOver = e.record.actualResult === "over" ? 1 : 0;
+      return (impliedOverProbability - actualOver) ** 2;
+    });
+    const averageError = errorValues.length > 0 ? mean(errorValues) : 0;
+
+    // Stabilität: je geringer die Streuung des Einflusses über die
+    // Spiele, desto konsistenter/vorhersagbarer verhält sich das Modul.
+    const influenceStdDev = entriesWithData.length > 1 ? stdDev(entriesWithData.map((e) => e.influence.influence)) : 0;
+    const stability = clamp(100 - (influenceStdDev / 10) * 100, 0, 100);
+
     const positiveInfluenceCount = entriesWithData.filter((e) => e.influence.direction === "over").length;
     const negativeInfluenceCount = entriesWithData.filter((e) => e.influence.direction === "under").length;
     const positiveInfluencePct = entriesWithData.length > 0 ? (positiveInfluenceCount / entriesWithData.length) * 100 : 0;
@@ -238,6 +259,10 @@ export function computeModulePerformance(records: BacktestDatasetRecord[]): Modu
       moduleKey,
       label,
       averageInfluence,
+      averagePositiveInfluence,
+      averageNegativeInfluence,
+      averageError,
+      stability,
       averageWeight,
       positiveInfluenceCount,
       positiveInfluencePct,
