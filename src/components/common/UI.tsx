@@ -233,6 +233,9 @@ export function Checkbox({
   return (
     <button
       type="button"
+      role="checkbox"
+      aria-checked={checked}
+      aria-label={sublabel ? `${label} — ${sublabel}` : label}
       disabled={readOnly}
       onClick={() => onChange?.(!checked)}
       className={`w-full flex items-start gap-2.5 rounded-md px-3 py-2.5 text-left border transition-colors ${

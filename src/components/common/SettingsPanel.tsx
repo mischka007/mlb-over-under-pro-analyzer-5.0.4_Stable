@@ -42,6 +42,7 @@ export function SettingsPanel({
           <div className="flex gap-1.5">
             <button
               onClick={() => onThemeChange("dark")}
+              aria-pressed={theme === "dark"}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono uppercase border transition-colors ${
                 theme === "dark" ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500"
               }`}
@@ -50,6 +51,7 @@ export function SettingsPanel({
             </button>
             <button
               onClick={() => onThemeChange("light")}
+              aria-pressed={theme === "light"}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono uppercase border transition-colors ${
                 theme === "light" ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500"
               }`}
@@ -78,6 +80,7 @@ export function SettingsPanel({
           <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1.5">Animationen</span>
           <button
             onClick={() => onAnimationsToggle(!animationsEnabled)}
+            aria-pressed={animationsEnabled}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[11px] font-mono uppercase border transition-colors ${
               animationsEnabled ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500"
             }`}

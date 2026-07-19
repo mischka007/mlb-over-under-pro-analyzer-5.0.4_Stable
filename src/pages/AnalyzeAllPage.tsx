@@ -30,6 +30,7 @@ export function AnalyzeAllPage({
   isRunning,
   progress,
   total,
+  failedCount = 0,
   onBack,
   onOpenGame,
 }: {
@@ -37,6 +38,7 @@ export function AnalyzeAllPage({
   isRunning: boolean;
   progress: number;
   total: number;
+  failedCount?: number;
   onBack: () => void;
   onOpenGame: (game: GameCardSummary) => void;
 }) {
@@ -61,6 +63,14 @@ export function AnalyzeAllPage({
         <div className="h-2 rounded-full bg-base-800 overflow-hidden">
           <div className="h-full bg-gold-500 transition-all duration-300" style={{ width: `${total ? (progress / total) * 100 : 0}%` }} />
         </div>
+      )}
+
+      {failedCount > 0 && (
+        <Card accent="red">
+          <div className="font-mono text-xs text-negred-400">
+            {failedCount} von {total} Spielen konnten nicht geladen werden (übersprungen) — die übrigen Ergebnisse sind vollständig.
+          </div>
+        </Card>
       )}
 
       <div className="space-y-2.5">

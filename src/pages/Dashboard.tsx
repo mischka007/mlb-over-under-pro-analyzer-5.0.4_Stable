@@ -137,7 +137,7 @@ export function Dashboard({
         <div className="max-w-7xl mx-auto flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             {onBack && (
-              <button onClick={onBack} className="rounded-md border border-base-600 p-2 text-slate-400 hover:border-gold-500 hover:text-gold-400 transition-colors">
+              <button onClick={onBack} aria-label="Zurück" className="rounded-md border border-base-600 p-2 text-slate-400 hover:border-gold-500 hover:text-gold-400 transition-colors">
                 <ArrowLeft size={16} />
               </button>
             )}

@@ -45,6 +45,7 @@ export default function App() {
   const [rankedResults, setRankedResults] = useState<RankedGameResult[]>([]);
   const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
   const [analyzeAllProgress, setAnalyzeAllProgress] = useState(0);
+  const [analyzeAllFailedCount, setAnalyzeAllFailedCount] = useState(0);
 
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([]);
 
@@ -64,17 +65,29 @@ export default function App() {
     setIsAnalyzingAll(true);
     setRankedResults([]);
     setAnalyzeAllProgress(0);
+    setAnalyzeAllFailedCount(0);
 
     const results: RankedGameResult[] = [];
+    let failedCount = 0;
+
     for (let i = 0; i < games.length; i++) {
       const game = games[i];
-      // Sequenziell statt parallel, um die Rate-Limits der kostenlosen
-      // API-Tarife (insbesondere The Odds API, 500 Requests/Monat) zu schonen.
-      const state = await loadGame(game);
-      const analysis = computeFullAnalysis(state);
-      const quality = assessQuality(analysis.consensus, analysis.premiumFilter);
-      const line = Number(state.setup.line) || 8.5;
-      results.push({ game, pick: analysis.consensus.pick, confidence: analysis.consensus.confidence, grade: quality.grade, tier: quality.tier, line });
+      try {
+        // Sequenziell statt parallel, um die Rate-Limits der kostenlosen
+        // API-Tarife (insbesondere The Odds API, 500 Requests/Monat) zu schonen.
+        const state = await loadGame(game);
+        const analysis = computeFullAnalysis(state);
+        const quality = assessQuality(analysis.consensus, analysis.premiumFilter);
+        const line = Number(state.setup.line) || 8.5;
+        results.push({ game, pick: analysis.consensus.pick, confidence: analysis.consensus.confidence, grade: quality.grade, tier: quality.tier, line });
+      } catch {
+        // Ein einzelnes fehlgeschlagenes Spiel (Netzwerkfehler, unvollständige
+        // Daten) darf die restliche Rangliste nicht blockieren — übersprungen
+        // statt die gesamte Schleife abzubrechen und die UI dauerhaft im
+        // Ladezustand hängen zu lassen.
+        failedCount += 1;
+        setAnalyzeAllFailedCount(failedCount);
+      }
       setAnalyzeAllProgress(i + 1);
       setRankedResults([...results]);
     }
@@ -143,6 +156,7 @@ export default function App() {
             isRunning={isAnalyzingAll}
             progress={analyzeAllProgress}
             total={games.length}
+            failedCount={analyzeAllFailedCount}
             onBack={() => setView("today")}
             onOpenGame={handleOpenRankedGame}
           />

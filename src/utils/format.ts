@@ -18,7 +18,16 @@ export function formatNumber(value: number, digits = 2): string {
   return value.toFixed(digits);
 }
 
-/** Erzeugt ein ISO-Datum (YYYY-MM-DD) für Dateinamen o. Ä. */
+/**
+ * Erzeugt einen dateisystemsicheren Datum+Zeit-Stempel (YYYY-MM-DD_HH-mm-ss)
+ * für Dateinamen. Enthält bewusst die Uhrzeit (nicht nur das Datum), damit
+ * mehrere Exporte am selben Tag eindeutige, chronologisch sortierbare
+ * Dateinamen erhalten. Keine Doppelpunkte (unter Windows in Dateinamen
+ * nicht zulässig).
+ */
 export function isoDateStamp(date: Date = new Date()): string {
-  return date.toISOString().slice(0, 10);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const datePart = date.toISOString().slice(0, 10);
+  const timePart = `${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+  return `${datePart}_${timePart}`;
 }
