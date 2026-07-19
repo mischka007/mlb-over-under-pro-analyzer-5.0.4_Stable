@@ -12,6 +12,7 @@ import { GameSetupBar } from "@/components/dashboard/GameSetupBar";
 import { PredictionHero } from "@/components/dashboard/PredictionHero";
 import { DataAvailabilityBanner } from "@/components/dashboard/DataAvailabilityBanner";
 import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPanel";
+import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
 import { TeamFormModule } from "@/components/modules/TeamFormModule";
 import { PitcherModule } from "@/components/modules/PitcherModule";
 import { BullpenModule } from "@/components/modules/BullpenModule";
@@ -228,6 +229,9 @@ export function Dashboard({
 
         {/* Monte-Carlo-Simulation */}
         <MonteCarloChart result={analysis.montecarlo} line={line} />
+
+        {/* Explainable AI & Smart Decision Support (Tag 8) */}
+        <DecisionSupportPanel analysis={analysis} accent={accent} />
 
         {/* Weitere Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

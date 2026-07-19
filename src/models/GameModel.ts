@@ -4,6 +4,7 @@ import type {
   BankrollResult,
   BullpenQualityAssessment,
   ConsensusResult,
+  DecisionSupportSummary,
   ModuleResult,
   ModuleWeightMultipliers,
   MonteCarloResult,
@@ -41,6 +42,7 @@ import {
   type DynamicWeightingContext,
 } from "@/engine/predictionEngine";
 import { assessPremiumBet } from "@/engine/premiumBetEngine";
+import { buildDecisionSupportSummary } from "@/engine/decisionSupport";
 import { toNumber, weightedAverage } from "@/utils/math";
 
 export interface FullAnalysis {
@@ -88,6 +90,14 @@ export interface FullAnalysis {
    * Siehe `@/engine/premiumBetEngine`.
    */
   premiumBetAssessment: PremiumBetAssessment;
+  /**
+   * Explainable AI & Smart Decision Support (Tag 8): erklärbare
+   * Zusammenfassung der Prognose (warum OVER/UNDER, Top-/geringste
+   * Einflussfaktoren, unsicherste Module, Modul-Widersprüche,
+   * Confidence-Begründung, Decision Score/Label). Siehe
+   * `@/engine/decisionSupport`.
+   */
+  decisionSupport: DecisionSupportSummary;
 }
 
 /**
@@ -108,6 +118,9 @@ export interface FullAnalysis {
  *     Simulationsqualität, Modul-Konsens, Penalties)
  *  9. Berechnet die Premium-Bet-Engine-PRO-Bewertung (sechsstufiges
  *     Bet-Tier: No Bet → Lean → Good Bet → Strong Bet → Premium Bet → Elite Bet)
+ * 10. Berechnet die Explainable-AI-/Smart-Decision-Support-Zusammenfassung
+ *     (Begründung OVER/UNDER, Top-/geringste Einflussfaktoren, unsicherste
+ *     Module, Modul-Widersprüche, Confidence-Begründung, Decision Score/Label)
  *
  * @param calibrationMultipliers  Optionale, aus `runHistoricalCalibration()`
  *   (Historical Calibration PRO, siehe `@/backtesting/historicalCalibration`)
@@ -326,6 +339,16 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     currentLine: toNumber(state.market.currentLine),
   });
 
+  // Schritt 10: Explainable AI & Smart Decision Support — erklärbare
+  // Zusammenfassung der Prognose, ausschließlich aus den bereits
+  // berechneten Modul-/Confidence-/Simulationsergebnissen abgeleitet.
+  const decisionSupport = buildDecisionSupportSummary({
+    modules: calibratedModules,
+    consensus,
+    advancedPrediction,
+    montecarlo,
+  });
+
   return {
     modules: calibratedModules,
     consensus,
@@ -339,5 +362,6 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     offenseQuality: { home: homeOffenseQuality, away: awayOffenseQuality },
     advancedPrediction,
     premiumBetAssessment,
+    decisionSupport,
   };
 }

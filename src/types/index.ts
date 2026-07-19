@@ -961,3 +961,48 @@ export interface ModelQualitySummary {
   calibrationScore: number;
   stabilityScore: number;
 }
+// ---------------------------------------------------------------------------
+// Tag 8 — Explainable AI & Smart Decision Support
+// ---------------------------------------------------------------------------
+
+/** Ein Modul, das für Unsicherheit in der aktuellen Prognose sorgt. */
+export interface DecisionSupportModuleNote {
+  moduleKey: ModuleKey;
+  label: string;
+  reason: string;
+}
+
+/** Zwei Module, die sich in ihrer Richtung widersprechen. */
+export interface ModuleContradiction {
+  overModule: string;
+  underModule: string;
+  description: string;
+}
+
+/** Sechsstufiges Decision Label (Schritt 5). */
+export type DecisionLabel = "Sehr schwach" | "Schwach" | "Neutral" | "Gut" | "Sehr gut" | "Elite";
+
+/**
+ * Explainable-AI-Zusammenfassung einer einzelnen Live-Prognose (Tag 8).
+ * Fasst ausschließlich bereits vorhandene Berechnungen (Modul-Scores/
+ * -Gewichte, `PredictionSummary`, `ConfidenceBreakdown`, Monte-Carlo-PRO-
+ * Simulationsstabilität) zusammen — erzeugt keinen neuen, eigenständigen
+ * Score jenseits des dokumentierten `decisionScore`.
+ */
+export interface DecisionSupportSummary {
+  /** Dynamisch erzeugte, ausschließlich datengetriebene Entscheidungssätze. */
+  narrativeSentences: string[];
+  /** Der Einzelgrund mit dem größten absoluten Einfluss auf die Prognose. */
+  strongestSingleReason: string | null;
+  /** Module mit dem geringsten absoluten Einfluss (Gegenstück zu `PredictionSummary.topInfluencingModules`). */
+  leastInfluentialModules: ModuleInfluence[];
+  /** Module mit unterdurchschnittlicher Datenqualität bzw. ohne ausreichende Datenbasis. */
+  mostUncertainModules: DecisionSupportModuleNote[];
+  /** Erkannte Widersprüche zwischen Modulen (starke, aber gegensätzliche Richtungen). */
+  moduleContradictions: ModuleContradiction[];
+  /** Menschlich lesbare Begründung der aktuellen Confidence, aus den Confidence-Engine-Faktoren abgeleitet. */
+  confidenceRationale: string[];
+  /** Zusammengesetzter Decision Score, 0–100. */
+  decisionScore: number;
+  decisionLabel: DecisionLabel;
+}
