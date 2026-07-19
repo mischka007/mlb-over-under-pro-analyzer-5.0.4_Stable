@@ -24,6 +24,7 @@ import { buildModelOptimizationData, type ModelOptimizationData } from "@/backte
 import { runHistoricalCalibration } from "@/backtesting/historicalCalibration";
 import { exportBacktestDatasetAsCsv, exportBacktestDatasetAsJson } from "@/utils/backtestExport";
 import { exportElementAsPdf } from "@/utils/pdfExport";
+import { formatSigned } from "@/utils/format";
 
 const CHART_COLORS = {
   gold: "#eab308",
@@ -311,7 +312,7 @@ function ConfidenceCalibrationChart({ optimization }: { optimization: ModelOptim
             <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.predictedPct.toFixed(0)} %</td>
             <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.decidedBets > 0 ? `${c.actualPct.toFixed(1)} %` : "–"}</td>
             <td className={`py-2 px-2 font-mono text-xs text-right ${Math.abs(c.gap) <= 5 ? "text-posgreen-400" : "text-negred-400"}`}>
-              {c.decidedBets > 0 ? `${c.gap >= 0 ? "+" : ""}${c.gap.toFixed(1)} pp` : "–"}
+              {c.decidedBets > 0 ? `${formatSigned(c.gap)} pp` : "–"}
             </td>
             <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{c.decidedBets}</td>
           </tr>
@@ -397,12 +398,10 @@ function WeightingAnalysisTable({ optimization }: { optimization: ModelOptimizat
                   w.recommendedChangePct > 0.5 ? "text-posgreen-400" : w.recommendedChangePct < -0.5 ? "text-negred-400" : "text-slate-400"
                 }`}
               >
-                {w.recommendedChangePct >= 0 ? "+" : ""}
-                {w.recommendedChangePct.toFixed(1)} %
+                {formatSigned(w.recommendedChangePct)} %
               </td>
               <td className={`py-2 px-2 font-mono text-xs text-right ${w.expectedImprovementPct >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
-                {w.expectedImprovementPct >= 0 ? "+" : ""}
-                {w.expectedImprovementPct.toFixed(1)} pp
+                {formatSigned(w.expectedImprovementPct)} pp
               </td>
             </tr>
           ))}
@@ -471,11 +470,11 @@ function SummaryCards({ data, loadedGameCount }: { data: BacktestingDashboardDat
     { label: "Trefferquote", value: `${(data.summary.hitRate * 100).toFixed(1)} %`, tone: data.summary.hitRate >= 0.5 ? "green" : "red" },
     { label: "ROI", value: `${(data.summary.roi * 100).toFixed(1)} %`, tone: data.summary.roi >= 0 ? "green" : "red" },
     { label: "Yield", value: `${(data.summary.yield * 100).toFixed(1)} %`, tone: data.summary.yield >= 0 ? "green" : "red" },
-    { label: "Gewinn/Verlust", value: `${data.summary.profit >= 0 ? "+" : ""}${data.summary.profit.toFixed(2)} u`, tone: data.summary.profit >= 0 ? "green" : "red" },
-    { label: "Ø Expected Value", value: `${data.averageEv >= 0 ? "+" : ""}${data.averageEv.toFixed(1)} %` },
+    { label: "Gewinn/Verlust", value: `${formatSigned(data.summary.profit, 2)} u`, tone: data.summary.profit >= 0 ? "green" : "red" },
+    { label: "Ø Expected Value", value: `${formatSigned(data.averageEv)} %` },
     { label: "Ø Confidence", value: `${data.averageConfidence.toFixed(1)} %` },
     { label: "Ø Fair Odds", value: data.averageFairOdds.toFixed(2) },
-    { label: "Ø Edge", value: `${data.averageEdge >= 0 ? "+" : ""}${data.averageEdge.toFixed(1)} %` },
+    { label: "Ø Edge", value: `${formatSigned(data.averageEdge)} %` },
     { label: "Ø Expected Runs", value: data.averageExpectedRuns.toFixed(2) },
     { label: "Längste Gewinnserie", value: String(data.risk.longestWinStreak) },
     { label: "Längste Verlustserie", value: String(data.risk.longestLossStreak) },

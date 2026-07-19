@@ -1,7 +1,7 @@
 import { Wallet } from "lucide-react";
 import type { BankrollResult } from "@/types";
 import { Card, SectionHeader } from "@/components/common/UI";
-import { formatCurrency, formatPercent } from "@/utils/format";
+import { formatCurrency, formatPercent, formatSigned } from "@/utils/format";
 
 /**
  * Bankroll-Rechner: stellt Flat-Betting, Kelly, Half-Kelly und Quarter-Kelly
@@ -26,16 +26,12 @@ export function BankrollCalculator({ result, bankroll }: { result: BankrollResul
       <div className="grid grid-cols-2 gap-3 mt-3">
         <div className="rounded-lg border border-base-600 bg-base-800/50 p-3">
           <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">ROI (pro Einsatz)</div>
-          <div className={`font-numeric text-xl leading-none ${roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
-            {roi >= 0 ? "+" : ""}
-            {roi.toFixed(1)}%
-          </div>
+          <div className={`font-numeric text-xl leading-none ${roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>{formatSigned(roi)}%</div>
         </div>
         <div className="rounded-lg border border-base-600 bg-base-800/50 p-3">
           <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">Yield (Kelly-gewichtet)</div>
           <div className={`font-numeric text-xl leading-none ${yieldPct >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
-            {yieldPct >= 0 ? "+" : ""}
-            {yieldPct.toFixed(2)}%
+            {formatSigned(yieldPct, 2)}%
           </div>
         </div>
       </div>

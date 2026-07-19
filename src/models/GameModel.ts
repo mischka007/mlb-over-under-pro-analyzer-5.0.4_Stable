@@ -270,7 +270,7 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
   const pickProbability = consensus.pick === "over" ? poisson.overProbability : consensus.pick === "under" ? poisson.underProbability : 0.5;
   const pickOdds =
     consensus.pick === "over" ? toNumber(state.setup.oddsOver) : consensus.pick === "under" ? toNumber(state.setup.oddsUnder) : null;
-  const bankrollAmount = toNumber(state.setup.bankroll) ?? 0;
+  const bankrollAmount = Math.max(0, toNumber(state.setup.bankroll) ?? 0);
   const bankroll = computeBankrollResult(pickProbability, pickOdds ?? 1.91, bankrollAmount);
 
   // Schritt 7: Premium-Filter

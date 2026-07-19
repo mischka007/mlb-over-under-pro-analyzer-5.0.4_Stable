@@ -19,6 +19,19 @@ export function formatNumber(value: number, digits = 2): string {
 }
 
 /**
+ * Formatiert eine Zahl mit explizitem Vorzeichen (+/-), z. B. für Edge-/
+ * ROI-/Änderungs-Werte. Behebt dabei ein reales Floating-Point-Problem:
+ * ein knapp negativer Wert wie `-0.04` würde mit `.toFixed(1)` zu
+ * `"-0.0"` runden — sichtbar falsch, da der gerundete Wert eigentlich
+ * neutral ist. Wird stattdessen als `"0.0"` (ohne Vorzeichen) dargestellt.
+ */
+export function formatSigned(value: number, digits = 1): string {
+  const rounded = Number(value.toFixed(digits));
+  const normalized = rounded === 0 ? 0 : rounded;
+  return `${normalized > 0 ? "+" : ""}${normalized.toFixed(digits)}`;
+}
+
+/**
  * Erzeugt einen dateisystemsicheren Datum+Zeit-Stempel (YYYY-MM-DD_HH-mm-ss)
  * für Dateinamen. Enthält bewusst die Uhrzeit (nicht nur das Datum), damit
  * mehrere Exporte am selben Tag eindeutige, chronologisch sortierbare

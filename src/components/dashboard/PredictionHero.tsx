@@ -2,7 +2,7 @@ import { motion } from "framer-motion";
 import { Star, TrendingDown, TrendingUp } from "lucide-react";
 import type { BankrollResult, ConsensusResult, QualityAssessment } from "@/types";
 import { Badge } from "@/components/common/UI";
-import { formatCurrency, formatPercent } from "@/utils/format";
+import { formatCurrency, formatPercent, formatSigned } from "@/utils/format";
 
 /**
  * Die große "Premium Prediction"-Karte ganz oben im Dashboard: zeigt
@@ -70,12 +70,12 @@ export function PredictionHero({
             <MetricTile label="Confidence Score" value={formatPercent(consensus.confidence, 1)} />
             <MetricTile
               label="Expected Value"
-              value={`${bankroll.expectedValue >= 0 ? "+" : ""}${(bankroll.expectedValue * 100).toFixed(1)}%`}
+              value={`${formatSigned(bankroll.expectedValue * 100)}%`}
               tone={bankroll.expectedValue >= 0 ? "green" : "red"}
             />
             <MetricTile
               label="Value %"
-              value={`${bankroll.valuePct >= 0 ? "+" : ""}${bankroll.valuePct.toFixed(1)}%`}
+              value={`${formatSigned(bankroll.valuePct)}%`}
               tone={bankroll.valuePct >= 0 ? "green" : "red"}
             />
             <MetricTile label="Kelly-Einsatz" value={formatCurrency(bankroll.kellyStake)} />

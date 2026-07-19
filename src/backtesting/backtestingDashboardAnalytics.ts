@@ -136,7 +136,7 @@ export function computeLineBucketPerformance(
   }
 
   for (const record of records) {
-    if (record.prediction === null) continue;
+    if (record.prediction === null || buckets.length === 0) continue;
     const closest = buckets.reduce((best, candidate) =>
       Math.abs(candidate - record.line) < Math.abs(best - record.line) ? candidate : best
     );
