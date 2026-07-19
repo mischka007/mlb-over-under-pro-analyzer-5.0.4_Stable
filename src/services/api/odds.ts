@@ -1,5 +1,6 @@
 import { cached } from "@/services/cache/cache";
 import { getOddsApiKey } from "@/services/api/apiKeys";
+import { normalizeTeamName, teamNamesMatch } from "@/services/api/teamNameMatching";
 
 /**
  * Quoten-Anbindung über The Odds API (https://the-odds-api.com), die einen
@@ -46,12 +47,41 @@ export async function fetchOddsForMatchup(homeTeamName: string, awayTeamName: st
       if (!response.ok) throw new Error(`The Odds API antwortete mit Status ${response.status}`);
       const events = (await response.json()) as OddsApiEvent[];
 
-      const match = events.find(
-        (e) =>
-          e.home_team.toLowerCase().includes(homeTeamName.toLowerCase()) &&
-          e.away_team.toLowerCase().includes(awayTeamName.toLowerCase())
+      // Schritt 4 (Debugging): vor dem Matching alle empfangenen Spiele
+      // sowie die gesuchten Teams protokollieren, damit ein Mismatch
+      // sofort nachvollziehbar ist.
+      console.debug(
+        `[Odds API] ${events.length} Spiel(e) empfangen:`,
+        events.map((e) => `${e.away_team} @ ${e.home_team}`)
       );
-      if (!match) throw new Error("Kein passendes Spiel bei The Odds API gefunden");
+      console.debug(
+        `[Odds API] Gesucht: "${awayTeamName}" @ "${homeTeamName}" (normalisiert: "${normalizeTeamName(awayTeamName)}" @ "${normalizeTeamName(homeTeamName)}")`
+      );
+
+      const match = events.find((e) => teamNamesMatch(e.home_team, homeTeamName) && teamNamesMatch(e.away_team, awayTeamName));
+
+      if (!match) {
+        // Schritt 5 (Fehlerbehandlung): keine generische Meldung, sondern
+        // alle Informationen, die einen zukünftigen Mismatch sofort
+        // nachvollziehbar machen — gesuchtes Spiel, normalisierte Namen,
+        // verfügbare Spiele, Anzahl.
+        const availableGames = events.map((e) => `"${e.away_team}" @ "${e.home_team}" (normalisiert: "${normalizeTeamName(e.away_team)}" @ "${normalizeTeamName(e.home_team)}")`);
+
+        console.warn(
+          `[Odds API] Kein passendes Spiel gefunden.\n` +
+            `Gesucht: "${awayTeamName}" @ "${homeTeamName}" (normalisiert: "${normalizeTeamName(awayTeamName)}" @ "${normalizeTeamName(homeTeamName)}")\n` +
+            `Empfangene Spiele (${events.length}):\n` +
+            (availableGames.length > 0 ? availableGames.map((g) => `  - ${g}`).join("\n") : "  (keine)")
+        );
+
+        throw new Error(
+          `Kein passendes Spiel bei The Odds API gefunden. Gesucht: "${awayTeamName}" @ "${homeTeamName}" ` +
+            `(normalisiert: "${normalizeTeamName(awayTeamName)}" @ "${normalizeTeamName(homeTeamName)}"). ` +
+            `Empfangene Spiele: ${events.length}. Verfügbar: ${availableGames.join("; ") || "keine"}`
+        );
+      }
+
+      console.debug(`[Odds API] Treffer: "${match.away_team}" @ "${match.home_team}"`);
 
       const snapshots: OddsSnapshot[] = [];
       match.bookmakers.forEach((bm) => {
