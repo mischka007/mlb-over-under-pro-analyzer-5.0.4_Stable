@@ -3,14 +3,17 @@ import type {
   AnalyzerState,
   BankrollResult,
   BullpenQualityAssessment,
+  ConfidenceBreakdown,
   ConsensusResult,
   DynamicWeightingAdjustment,
+  ModuleInfluence,
   ModuleResult,
   ModuleWeightMultipliers,
   MonteCarloResult,
   OffenseQualityAssessment,
   PitcherQualityAssessment,
   PoissonResult,
+  PredictionSummary,
 } from "@/types";
 import {
   BULLPEN_HIGH_WORKLOAD_IP3_THRESHOLD,
@@ -346,6 +349,75 @@ function splitExpectedRuns(
 }
 
 /**
+ * Berechnet die faire Dezimalquote aus einer Modellwahrscheinlichkeit
+ * (ohne Buchmacher-Marge): `1 / probability`. Liefert `null` bei einer
+ * Wahrscheinlichkeit von 0, da die Quote sonst nicht definiert wäre.
+ */
+function computeFairOdds(probability: number): number | null {
+  if (probability <= 0) return null;
+  return 1 / probability;
+}
+
+/**
+ * Prediction Engine PRO (Phase 2): erklärbare Zusammenfassung der
+ * Prognose. Fasst ausschließlich bereits vorhandene Modul- und
+ * Confidence-Ausgaben zusammen (`ModuleResult.score`/`.weight` sowie
+ * `ConfidenceBreakdown.factors`/`.penalties`) — berechnet dabei
+ * bewusst KEINEN neuen, eigenständigen Score, sondern macht die bereits
+ * getroffene Entscheidung nachvollziehbar: warum kam diese Prognose
+ * zustande, und welche Module hatten den größten Einfluss?
+ *
+ * Modul-Einfluss = `weight * (score - 50)`: positiv zieht Richtung
+ * Over, negativ Richtung Under; der Betrag zeigt die Stärke.
+ */
+function computePredictionSummary(params: {
+  modules: ModuleResult[];
+  confidenceBreakdown: ConfidenceBreakdown;
+  dataCompletenessPct: number;
+}): PredictionSummary {
+  const activeModules = params.modules.filter((m) => m.hasData);
+
+  const influences: ModuleInfluence[] = activeModules.map((m) => {
+    const influence = m.weight * (m.score - 50);
+    const direction: ModuleInfluence["direction"] = influence > 0.5 ? "over" : influence < -0.5 ? "under" : "neutral";
+    return { moduleKey: m.key, label: m.label, score: m.score, weight: m.weight, influence, direction };
+  });
+
+  const topInfluencingModules = [...influences].sort((a, b) => Math.abs(b.influence) - Math.abs(a.influence)).slice(0, 5);
+
+  const topReasonsForOver = influences
+    .filter((i) => i.direction === "over")
+    .sort((a, b) => b.influence - a.influence)
+    .slice(0, 3)
+    .map((i) => `${i.label}: Score ${i.score}/100 bei ${(i.weight * 100).toFixed(0)}% Gewicht — spricht für Over.`);
+
+  const topReasonsForUnder = influences
+    .filter((i) => i.direction === "under")
+    .sort((a, b) => a.influence - b.influence)
+    .slice(0, 3)
+    .map((i) => `${i.label}: Score ${i.score}/100 bei ${(i.weight * 100).toFixed(0)}% Gewicht — spricht für Under.`);
+
+  const weakConfidenceFactors = params.confidenceBreakdown.factors
+    .filter((f) => f.score < 40)
+    .sort((a, b) => a.score - b.score)
+    .map((f) => `${f.label}: niedriger Score (${Math.round(f.score)}/100) — ${f.note}`);
+
+  const biggestRisks = [...params.confidenceBreakdown.penalties, ...weakConfidenceFactors].slice(0, 5);
+
+  const dataQualityPct = params.dataCompletenessPct;
+  const dataQualityLabel: PredictionSummary["dataQualityLabel"] = dataQualityPct >= 80 ? "Hoch" : dataQualityPct >= 55 ? "Mittel" : "Niedrig";
+
+  return {
+    topReasonsForOver,
+    topReasonsForUnder,
+    biggestRisks,
+    dataQualityPct,
+    dataQualityLabel,
+    topInfluencingModules,
+  };
+}
+
+/**
  * Berechnet die vollständige erweiterte Prognose (Prediction Engine PRO).
  * Reine additive Veredelung: verändert weder Poisson/Monte-Carlo/Bankroll/
  * Consensus noch deren Basisberechnung, sondern kombiniert deren Ausgaben
@@ -424,8 +496,18 @@ export function computeAdvancedPrediction(params: {
   const fairTotalLine = computeFairTotalLine(poisson);
   const modelTotal = Math.round(finalExpectedRuns * 2) / 2;
   const modelSpread = expectedRunsHome !== null && expectedRunsAway !== null ? expectedRunsHome - expectedRunsAway : null;
+  const expectedRunDifferential = modelSpread;
+
+  const fairOddsOver = computeFairOdds(probabilityOver);
+  const fairOddsUnder = computeFairOdds(probabilityUnder);
 
   const dataCompleteness = params.totalModuleCount > 0 ? (params.activeModuleCount / params.totalModuleCount) * 100 : 0;
+
+  const predictionSummary = computePredictionSummary({
+    modules: params.modules,
+    confidenceBreakdown,
+    dataCompletenessPct: dataCompleteness,
+  });
 
   const edgeComponent = clamp(50 + (expectedEdge ?? 0) * 2, 0, 100);
 
@@ -473,8 +555,12 @@ export function computeAdvancedPrediction(params: {
     fairTotalLine,
     modelTotal,
     modelSpread,
+    expectedRunDifferential,
+    fairOddsOver,
+    fairOddsUnder,
     weightingAdjustments,
     confidencePenalties: penalties,
     confidenceBreakdown,
+    predictionSummary,
   };
 }
