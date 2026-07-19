@@ -4,6 +4,36 @@ import {
 } from "vite";
 
 import react from "@vitejs/plugin-react";
+import { execSync } from "node:child_process";
+
+/**
+ * Version 5.1 Stable — Release-Informationen (Tag 12).
+ *
+ * Werden über Vites Standard-`define`-Mechanismus zur tatsächlichen
+ * Build-Zeit (bei echtem `npm run build`/`npm run dev`) real erzeugt —
+ * kein geschätzter oder fest im Code hinterlegter Wert. Die Git-Revision
+ * wird nur gesetzt, wenn tatsächlich ein Git-Repository vorhanden ist
+ * ("falls vorhanden") — ohne Repository bewusst `null` statt eines
+ * erfundenen Werts.
+ */
+const buildTimestamp =
+  new Date().toISOString();
+
+function readGitRevision(): string | null {
+  try {
+    return execSync(
+      "git rev-parse --short HEAD",
+      { stdio: ["ignore", "pipe", "ignore"] }
+    )
+      .toString()
+      .trim();
+  } catch {
+    return null;
+  }
+}
+
+const gitRevision =
+  readGitRevision();
 
 /**
  * Basis-URL der The Odds API.
@@ -269,6 +299,11 @@ export default defineConfig(
       env.ODDS_API_KEY;
 
     return {
+      define: {
+        __BUILD_TIMESTAMP__: JSON.stringify(buildTimestamp),
+        __GIT_REVISION__: JSON.stringify(gitRevision),
+      },
+
       plugins: [
         react(),
 
@@ -464,7 +499,7 @@ export default defineConfig(
                             "application/json",
 
                           "User-Agent":
-                            "MLB-Analyzer/5.0.4",
+                            "MLB-Analyzer/5.1.0",
                         },
                       }
                     );

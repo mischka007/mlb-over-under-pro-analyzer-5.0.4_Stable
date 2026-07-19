@@ -10,7 +10,20 @@ import { buildApiHealthReport } from "@/engine/apiHealth";
 import { getCacheStats } from "@/services/cache/cache";
 
 /** Echte, aktuelle Projektversion (aus `package.json`). */
-const APP_VERSION = "5.0.4";
+const APP_VERSION = "5.1.0";
+const APP_STATUS = "Stable";
+
+/**
+ * Version 5.1 Stable (Tag 12): Build-Datum/-Zeit sowie Git-Revision
+ * stammen aus den zur tatsächlichen Build-Zeit von `vite.config.ts`
+ * gesetzten Konstanten (`define`, siehe `src/vite-env.d.ts`) — keine
+ * geschätzten Werte. `__GIT_REVISION__` ist `null`, wenn kein
+ * Git-Repository vorhanden ist ("falls vorhanden").
+ */
+const buildDate = new Date(__BUILD_TIMESTAMP__);
+const buildDateLabel = buildDate.toLocaleDateString("de-DE");
+const buildTimeLabel = buildDate.toLocaleTimeString("de-DE");
+const gitRevisionLabel = __GIT_REVISION__ ?? "nicht verfügbar";
 
 /**
  * Tag 9 — Release Dashboard.
@@ -65,6 +78,25 @@ export function SystemStatusPanel({
             {cacheStatus.freshEntries}
             <span className="text-sm text-slate-500">/{cacheStatus.totalEntries}</span>
           </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 pb-4 border-b border-base-600/60">
+        <div>
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">Build Date</span>
+          <span className="font-numeric text-lg text-slate-100">{buildDateLabel}</span>
+        </div>
+        <div>
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">Build Time</span>
+          <span className="font-numeric text-lg text-slate-100">{buildTimeLabel}</span>
+        </div>
+        <div>
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">Git Revision</span>
+          <span className="font-mono text-sm text-slate-100">{gitRevisionLabel}</span>
+        </div>
+        <div>
+          <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500">Projektstatus</span>
+          <Badge tone="green">{APP_STATUS}</Badge>
         </div>
       </div>
 
