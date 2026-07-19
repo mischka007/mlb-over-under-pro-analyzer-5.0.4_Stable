@@ -102,3 +102,23 @@ export function invalidateCache(key: string): void {
     // ignorieren
   }
 }
+
+/**
+ * Release Dashboard (Tag 9): liest den tatsächlichen, aktuellen Zustand
+ * des In-Memory-Caches aus — rein additive Introspektion, verändert
+ * nichts am bestehenden Cache-Verhalten. `staleEntries` zählt Einträge,
+ * deren TTL bereits abgelaufen ist, aber noch nicht durch einen erneuten
+ * Zugriff (`getCached`) bereinigt wurden.
+ */
+export function getCacheStats(): { totalEntries: number; freshEntries: number; staleEntries: number } {
+  const now = Date.now();
+  let freshEntries = 0;
+  let staleEntries = 0;
+
+  for (const entry of memoryCache.values()) {
+    if (entry.expiresAt > now) freshEntries++;
+    else staleEntries++;
+  }
+
+  return { totalEntries: memoryCache.size, freshEntries, staleEntries };
+}

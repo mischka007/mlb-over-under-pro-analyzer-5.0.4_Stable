@@ -13,6 +13,7 @@ import { PredictionHero } from "@/components/dashboard/PredictionHero";
 import { DataAvailabilityBanner } from "@/components/dashboard/DataAvailabilityBanner";
 import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPanel";
 import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
+import { SystemStatusPanel } from "@/components/dashboard/SystemStatusPanel";
 import { TeamFormModule } from "@/components/modules/TeamFormModule";
 import { PitcherModule } from "@/components/modules/PitcherModule";
 import { BullpenModule } from "@/components/modules/BullpenModule";
@@ -76,7 +77,15 @@ export function Dashboard({
   // verwendet. Die Eingabefelder selbst bleiben sofort responsiv, da sie
   // direkt an `state` (nicht debouncedState) gebunden sind.
   const debouncedState = useDebouncedValue(state, 300);
-  const analysis = useMemo(() => computeFullAnalysis(debouncedState), [debouncedState]);
+  // Release Dashboard (Tag 9): misst die tatsächliche Berechnungsdauer der
+  // bereits bestehenden `computeFullAnalysis()`-Pipeline — reine Messung
+  // um den unveränderten Aufruf herum, keine Änderung an der Berechnung
+  // selbst.
+  const { analysis, computationDurationMs } = useMemo(() => {
+    const start = performance.now();
+    const result = computeFullAnalysis(debouncedState);
+    return { analysis: result, computationDurationMs: performance.now() - start };
+  }, [debouncedState]);
   const quality = useMemo(() => assessQuality(analysis.consensus, analysis.premiumFilter), [analysis]);
   const line = toNumber(state.setup.line) ?? 8.5;
 
@@ -232,6 +241,9 @@ export function Dashboard({
 
         {/* Explainable AI & Smart Decision Support (Tag 8) */}
         <DecisionSupportPanel analysis={analysis} accent={accent} />
+
+        {/* Release Dashboard: Systemstatus, Data Quality, Smart Warnings, API Health (Tag 9) */}
+        <SystemStatusPanel state={state} analysis={analysis} availability={availability ?? null} computationDurationMs={computationDurationMs} />
 
         {/* Weitere Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1006,3 +1006,83 @@ export interface DecisionSupportSummary {
   decisionScore: number;
   decisionLabel: DecisionLabel;
 }
+// ---------------------------------------------------------------------------
+// Tag 9 — Performance & Data Quality PRO
+// ---------------------------------------------------------------------------
+
+export type DataQualityLabel = "Exzellent" | "Gut" | "Ausreichend" | "Schwach" | "Unzureichend";
+
+/** Data Quality Engine (Schritt 3): Bewertung eines einzelnen Datenbereichs. */
+export interface DataQualityAreaAssessment {
+  area: string;
+  qualityScore: number;
+  qualityLabel: DataQualityLabel;
+  /**
+   * Geschätzter Einfluss dieses Bereichs auf die Gesamt-Confidence, in
+   * Prozentpunkten (positiv = erhöhend, negativ = reduzierend) — aus dem
+   * tatsächlichen Gewicht/Score des zugehörigen Confidence-Faktors
+   * abgeleitet, sofern vorhanden.
+   */
+  confidenceImpact: number;
+  note: string;
+}
+
+export interface DataQualityReport {
+  areas: DataQualityAreaAssessment[];
+  overallScore: number;
+  overallLabel: DataQualityLabel;
+}
+
+export type WarningPriority = "kritisch" | "hoch" | "mittel" | "niedrig";
+export type WarningCategory = "Datenqualität" | "Modell" | "Markt" | "Simulation" | "Bestätigung";
+
+/** Smart Warnings (Schritt 4): eine einzelne, priorisierte, kategorisierte Warnung. */
+export interface SmartWarning {
+  priority: WarningPriority;
+  category: WarningCategory;
+  description: string;
+  recommendation: string;
+}
+
+export type ApiSourceStatus = "verfügbar" | "eingeschränkt" | "nicht verfügbar";
+
+/**
+ * API Health (Schritt 5): Bewertung einer einzelnen Datenquelle.
+ * `responseTimeMs`/`errorRatePct`/`lastUpdated` sind `null`, wenn dafür
+ * keine echte Instrumentierung vorliegt — bewusst nicht erfunden.
+ */
+export interface ApiSourceHealth {
+  source: string;
+  status: ApiSourceStatus;
+  fieldsLoaded: number;
+  fieldsExpected: number;
+  completenessPct: number;
+  responseTimeMs: number | null;
+  errorRatePct: number | null;
+  lastUpdated: string | null;
+}
+
+export interface ApiHealthReport {
+  sources: ApiSourceHealth[];
+  overallCompletenessPct: number;
+}
+
+/** Release Dashboard (Schritt 6): Zusammenfassung des Cache-Zustands. */
+export interface CacheStatusSummary {
+  totalEntries: number;
+  freshEntries: number;
+  staleEntries: number;
+}
+
+/**
+ * Release Dashboard (Schritt 6): technische Systemstatus-Zusammenfassung
+ * für die aktuelle Analyse.
+ */
+export interface SystemStatusSummary {
+  version: string;
+  computationDurationMs: number | null;
+  cacheStatus: CacheStatusSummary;
+  dataQuality: DataQualityReport;
+  warnings: SmartWarning[];
+  apiHealth: ApiHealthReport;
+}
