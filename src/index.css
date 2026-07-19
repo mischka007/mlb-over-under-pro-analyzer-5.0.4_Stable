@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Light-Mode-Überschreibungen: die App ist primär als Dark-Theme
+   konzipiert (Terminal-Optik), Light-Mode hellt Hintergrund/Text aufgehellt
+   auf, behält aber Gold/Türkis/Grün/Rot als Akzentfarben bei. */
+html.light body {
+  background-color: #f4f5f7;
+  color: #12151a;
+}
+
+html.light .bg-base-950 {
+  background-color: #eef0f3;
+}
+html.light .bg-base-900,
+html.light .bg-base-850\/70,
+html.light .bg-base-850\/90,
+html.light .bg-base-900\/90 {
+  background-color: #ffffff;
+}
+html.light .text-slate-100 {
+  color: #12151a;
+}
+html.light .text-slate-200 {
+  color: #1f2530;
+}
+html.light .border-base-600,
+html.light .border-base-700 {
+  border-color: #d7dbe2;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #2a3140 transparent;
+}
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: #2a3140;
+  border-radius: 9999px;
+}

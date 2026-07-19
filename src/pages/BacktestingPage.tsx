@@ -1,0 +1,549 @@
+import { useRef, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { ArrowLeft, BarChart3, Download, FileJson, FileSpreadsheet, FileText, Loader2, Play, TrendingUp } from "lucide-react";
+import { Badge, Card, SectionHeader } from "@/components/common/UI";
+import { BacktestManager } from "@/backtesting/backtestManager";
+import { buildBacktestDataset } from "@/backtesting/backtestingDatasetBuilder";
+import { buildBacktestingDashboardData, type BacktestingDashboardData } from "@/backtesting/backtestingDashboardAnalytics";
+import { exportBacktestDatasetAsCsv, exportBacktestDatasetAsJson } from "@/utils/backtestExport";
+import { exportElementAsPdf } from "@/utils/pdfExport";
+
+const CHART_COLORS = {
+  gold: "#eab308",
+  goldLight: "#f5c451",
+  teal: "#14b8ac",
+  tealLight: "#2dd4c8",
+  posgreen: "#22c55e",
+  negred: "#ef4444",
+  text: "#F1EDE4",
+  muted: "#5B6270",
+  gridLine: "#2B313B",
+  tooltipBg: "#20252D",
+};
+
+const tooltipStyle = {
+  contentStyle: { background: CHART_COLORS.tooltipBg, border: `1px solid ${CHART_COLORS.gridLine}`, borderRadius: 6 },
+  labelStyle: { color: CHART_COLORS.text, fontSize: 11 },
+  itemStyle: { color: CHART_COLORS.text, fontSize: 11 },
+};
+
+function formatIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function defaultStartDate(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  return formatIsoDate(d);
+}
+
+function defaultEndDate(): string {
+  return formatIsoDate(new Date());
+}
+
+/**
+ * Backtesting PRO Phase 3: eigenständige Dashboard-Seite.
+ *
+ * Lädt echte historische MLB-Spiele über die bestehende, unveränderte
+ * Backtest-Datenpipeline (`BacktestManager`), baut daraus den
+ * vollständigen Backtest-Datensatz (`buildBacktestDataset`, nutzt
+ * ausschließlich die bestehende Prediction Engine PRO) und zeigt die
+ * vollständige Auswertung: Kennzahlen, Confidence-/Linien-/Modul-
+ * Aufschlüsselung, Kalibrierungs-Empfehlungen sowie Visualisierungen
+ * (ROI-/Yield-/Trefferquote-Verlauf, Confidence-Verteilung, Profit nach
+ * Linie/Modul, Gewinn-/Verlust-Kurve). Export als CSV, JSON und PDF.
+ *
+ * Rein additiv: verändert weder das bestehende Dashboard noch andere
+ * Seiten. Erreichbar über einen neuen Button auf der Startseite.
+ */
+export function BacktestingPage({ onBack }: { onBack: () => void }) {
+  const [startDate, setStartDate] = useState(defaultStartDate());
+  const [endDate, setEndDate] = useState(defaultEndDate());
+  const [line, setLine] = useState("8.5");
+  const [odds, setOdds] = useState("1.91");
+
+  const [isRunning, setIsRunning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [data, setData] = useState<BacktestingDashboardData | null>(null);
+  const [loadedGameCount, setLoadedGameCount] = useState(0);
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
+
+  const runBacktest = async () => {
+    setIsRunning(true);
+    setError(null);
+    setData(null);
+
+    try {
+      const parsedStart = new Date(`${startDate}T12:00:00`);
+      const parsedEnd = new Date(`${endDate}T12:00:00`);
+      const parsedLine = Number(line);
+      const parsedOdds = Number(odds);
+
+      if (Number.isNaN(parsedStart.getTime()) || Number.isNaN(parsedEnd.getTime())) {
+        throw new Error("Ungültiger Datumsbereich.");
+      }
+      if (parsedStart.getTime() > parsedEnd.getTime()) {
+        throw new Error("Das Startdatum darf nicht nach dem Enddatum liegen.");
+      }
+      if (!Number.isFinite(parsedLine) || parsedLine <= 0) {
+        throw new Error("Ungültige Wettlinie.");
+      }
+      if (!Number.isFinite(parsedOdds) || parsedOdds <= 1) {
+        throw new Error("Ungültige Quote.");
+      }
+
+      const manager = new BacktestManager();
+      const dataset = await manager.prepareHistoricalBacktestDataset(parsedStart, parsedEnd, parsedLine, parsedOdds);
+      setLoadedGameCount(dataset.backtestGames.length);
+
+      const records = buildBacktestDataset(dataset.states, dataset.backtestGames);
+      const dashboardData = buildBacktestingDashboardData(records);
+      setData(dashboardData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unbekannter Fehler beim Backtest.");
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  const handlePdfExport = async () => {
+    if (!reportRef.current) return;
+    setIsExportingPdf(true);
+    try {
+      await exportElementAsPdf(reportRef.current, "mlb-backtest-report");
+    } finally {
+      setIsExportingPdf(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-base-950 px-4 sm:px-8 py-6 max-w-6xl mx-auto space-y-4">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 rounded-md border border-base-600 px-3 py-2 text-[11px] font-mono uppercase tracking-wider text-slate-400 hover:border-gold-500 hover:text-gold-400 transition-colors"
+          >
+            <ArrowLeft size={13} /> Zurück
+          </button>
+          <h2 className="font-display text-xl font-semibold uppercase tracking-wide text-slate-100">Backtesting PRO</h2>
+        </div>
+
+        {data && (
+          <div className="flex flex-wrap gap-2">
+            <ExportButton icon={FileSpreadsheet} label="CSV" onClick={() => exportBacktestDatasetAsCsv(data.records)} />
+            <ExportButton icon={FileJson} label="JSON" onClick={() => exportBacktestDatasetAsJson(data.records)} />
+            <ExportButton icon={FileText} label="PDF" onClick={handlePdfExport} loading={isExportingPdf} />
+          </div>
+        )}
+      </div>
+
+      <Card accent="gold">
+        <SectionHeader icon={BarChart3} title="Backtest-Zeitraum" accent="gold" />
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <DateField label="Von" value={startDate} onChange={setStartDate} />
+          <DateField label="Bis" value={endDate} onChange={setEndDate} />
+          <NumberField label="Wettlinie (Standard)" value={line} onChange={setLine} step="0.5" />
+          <NumberField label="Quote (Standard)" value={odds} onChange={setOdds} step="0.01" />
+        </div>
+        <button
+          onClick={runBacktest}
+          disabled={isRunning}
+          className="mt-4 flex items-center gap-2 rounded-md border border-gold-500 bg-gold-500/10 px-4 py-2.5 text-xs font-mono uppercase tracking-wider text-gold-400 hover:bg-gold-500/20 transition-colors disabled:opacity-50"
+        >
+          {isRunning ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+          {isRunning ? "Backtest läuft…" : "Backtest starten"}
+        </button>
+        {error && <p className="mt-3 font-mono text-xs text-negred-400">{error}</p>}
+        {isRunning && (
+          <p className="mt-3 font-mono text-[11px] text-slate-500">
+            Lädt historische Spiele und berechnet die vollständige Prognose je Spiel — kann bei größeren Zeiträumen einen Moment dauern.
+          </p>
+        )}
+      </Card>
+
+      {data && (
+        <div ref={reportRef} className="space-y-4">
+          <SummaryCards data={data} loadedGameCount={loadedGameCount} />
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <RoiYieldChart data={data} />
+            <HitRateChart data={data} />
+            <EquityCurveChart data={data} />
+            <ConfidenceDistributionChart data={data} />
+            <ProfitByLineChart data={data} />
+            <ProfitByModuleChart data={data} />
+          </div>
+
+          <ConfidenceBucketTable data={data} />
+          <LineBucketTable data={data} />
+          <ModulePerformanceTable data={data} />
+          <RecommendationsPanel data={data} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DateField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">{label}</span>
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md bg-base-800/80 border border-base-600 text-center text-xs text-slate-100 font-mono py-2 outline-none transition-colors focus:border-gold-500"
+      />
+    </label>
+  );
+}
+
+function NumberField({ label, value, onChange, step }: { label: string; value: string; onChange: (v: string) => void; step: string }) {
+  return (
+    <label className="block">
+      <span className="block font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">{label}</span>
+      <input
+        type="number"
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full rounded-md bg-base-800/80 border border-base-600 text-center text-xs text-slate-100 font-mono py-2 outline-none transition-colors focus:border-gold-500"
+      />
+    </label>
+  );
+}
+
+function ExportButton({
+  icon: Icon,
+  label,
+  onClick,
+  loading = false,
+}: {
+  icon: typeof Download;
+  label: string;
+  onClick: () => void;
+  loading?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className="flex items-center gap-1.5 rounded-md border border-base-600 bg-base-800/70 px-3 py-2 text-[11px] font-mono uppercase tracking-wider text-slate-300 hover:border-teal-500 hover:text-teal-400 transition-colors disabled:opacity-50"
+    >
+      <Icon size={13} />
+      {loading ? "Erzeuge…" : label}
+    </button>
+  );
+}
+
+function SummaryCards({ data, loadedGameCount }: { data: BacktestingDashboardData; loadedGameCount: number }) {
+  const stats: { label: string; value: string; tone?: "gold" | "green" | "red" }[] = [
+    { label: "Spiele geladen", value: String(loadedGameCount) },
+    { label: "Wetten platziert", value: String(data.summary.decidedBets) },
+    { label: "Trefferquote", value: `${(data.summary.hitRate * 100).toFixed(1)} %`, tone: data.summary.hitRate >= 0.5 ? "green" : "red" },
+    { label: "ROI", value: `${(data.summary.roi * 100).toFixed(1)} %`, tone: data.summary.roi >= 0 ? "green" : "red" },
+    { label: "Yield", value: `${(data.summary.yield * 100).toFixed(1)} %`, tone: data.summary.yield >= 0 ? "green" : "red" },
+    { label: "Gewinn/Verlust", value: `${data.summary.profit >= 0 ? "+" : ""}${data.summary.profit.toFixed(2)} u`, tone: data.summary.profit >= 0 ? "green" : "red" },
+    { label: "Ø Expected Value", value: `${data.averageEv >= 0 ? "+" : ""}${data.averageEv.toFixed(1)} %` },
+    { label: "Ø Confidence", value: `${data.averageConfidence.toFixed(1)} %` },
+    { label: "Längste Gewinnserie", value: String(data.risk.longestWinStreak) },
+    { label: "Längste Verlustserie", value: String(data.risk.longestLossStreak) },
+    { label: "Max. Drawdown", value: `${data.risk.maximumDrawdown.toFixed(2)} u (${data.risk.maximumDrawdownPct.toFixed(1)} %)`, tone: "red" },
+  ];
+
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={TrendingUp} title="Kennzahlen" accent="teal" />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        {stats.map((s) => (
+          <div key={s.label}>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">{s.label}</div>
+            <div
+              className={`font-numeric text-2xl leading-none ${
+                s.tone === "green" ? "text-posgreen-400" : s.tone === "red" ? "text-negred-400" : "text-slate-100"
+              }`}
+            >
+              {s.value}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function RoiYieldChart({ data }: { data: BacktestingDashboardData }) {
+  const chartData = data.roiTimeSeries.map((point, i) => ({
+    index: point.index,
+    roi: point.value * 100,
+    yield: (data.yieldTimeSeries[i]?.value ?? 0) * 100,
+  }));
+
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={TrendingUp} title="ROI- / Yield-Verlauf" accent="gold" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="index" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} unit="%" />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(1)} %`} />
+            <Legend wrapperStyle={{ fontSize: 11, color: CHART_COLORS.text }} />
+            <Line type="monotone" dataKey="roi" name="ROI (kumuliert)" stroke={CHART_COLORS.gold} dot={false} strokeWidth={2} />
+            <Line type="monotone" dataKey="yield" name="Yield (kumuliert)" stroke={CHART_COLORS.teal} dot={false} strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function HitRateChart({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={TrendingUp} title="Trefferquote über Zeit" accent="teal" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data.hitRateTimeSeries} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="index" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis
+              tick={{ fill: CHART_COLORS.muted, fontSize: 10 }}
+              axisLine={{ stroke: CHART_COLORS.gridLine }}
+              tickLine={false}
+              unit="%"
+              domain={[0, 100]}
+            />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(1)} %`} />
+            <Line type="monotone" dataKey="value" name="Trefferquote" stroke={CHART_COLORS.tealLight} dot={false} strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function EquityCurveChart({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={TrendingUp} title="Gewinn-/Verlust-Kurve" accent="gold" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={data.equityCurve} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <defs>
+              <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor={CHART_COLORS.gold} stopOpacity={0.4} />
+                <stop offset="95%" stopColor={CHART_COLORS.gold} stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="index" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} unit="u" />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(2)} Units`} />
+            <Area type="monotone" dataKey="value" name="Kumulierter Gewinn/Verlust" stroke={CHART_COLORS.gold} fill="url(#equityGradient)" strokeWidth={2} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function ConfidenceDistributionChart({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Confidence-Verteilung" accent="teal" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.confidenceDistribution} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="bucket" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} allowDecimals={false} />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => [v, "Wetten"]} />
+            <Bar dataKey="count" fill={CHART_COLORS.tealLight} radius={[3, 3, 0, 0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function ProfitByLineChart({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={BarChart3} title="Profit nach Wettlinie" accent="gold" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.profitByLine} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="line" tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} unit="u" />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(2)} Units`} />
+            <Bar dataKey="profit" radius={[3, 3, 0, 0]}>
+              {data.profitByLine.map((d, i) => (
+                <Cell key={i} fill={d.profit >= 0 ? CHART_COLORS.posgreen : CHART_COLORS.negred} fillOpacity={0.85} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function ProfitByModuleChart({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Profit nach Modul" accent="teal" />
+      <div style={{ height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data.profitByModule} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+            <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+            <XAxis dataKey="label" tick={{ fill: CHART_COLORS.muted, fontSize: 9 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} />
+            <YAxis tick={{ fill: CHART_COLORS.muted, fontSize: 10 }} axisLine={{ stroke: CHART_COLORS.gridLine }} tickLine={false} unit="u" />
+            <Tooltip {...tooltipStyle} formatter={(v: number) => `${v.toFixed(2)} Units`} />
+            <Bar dataKey="profit" radius={[3, 3, 0, 0]}>
+              {data.profitByModule.map((d, i) => (
+                <Cell key={i} fill={d.profit >= 0 ? CHART_COLORS.posgreen : CHART_COLORS.negred} fillOpacity={0.85} />
+              ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+function ConfidenceBucketTable({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={BarChart3} title="Auswertung nach Confidence" accent="gold" />
+      <TableShell headers={["Bereich", "Wetten", "Trefferquote", "ROI", "Yield"]}>
+        {data.confidenceBuckets.map((b) => (
+          <tr key={b.bucket} className="border-t border-base-600/60">
+            <td className="py-2 px-2 font-mono text-xs text-slate-200">{b.bucket}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{b.decidedBets}</td>
+            <td className="py-2 px-2 font-mono text-xs text-right">
+              <Badge tone={b.hitRate >= 0.5 ? "green" : "red"}>{(b.hitRate * 100).toFixed(1)} %</Badge>
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${b.roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {(b.roi * 100).toFixed(1)} %
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${(b.decidedBets > 0 ? b.profit / b.decidedBets : 0) >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {b.decidedBets > 0 ? `${((b.profit / b.decidedBets) * 100).toFixed(1)} %` : "–"}
+            </td>
+          </tr>
+        ))}
+      </TableShell>
+    </Card>
+  );
+}
+
+function LineBucketTable({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Auswertung nach Wettlinie" accent="teal" />
+      <TableShell headers={["Linie", "Wetten", "Trefferquote", "ROI", "Profit"]}>
+        {data.lineBuckets.map((b) => (
+          <tr key={b.line} className="border-t border-base-600/60">
+            <td className="py-2 px-2 font-mono text-xs text-slate-200">{b.line.toFixed(1)}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{b.bets}</td>
+            <td className="py-2 px-2 font-mono text-xs text-right">
+              {b.decidedBets > 0 ? <Badge tone={b.hitRate >= 0.5 ? "green" : "red"}>{(b.hitRate * 100).toFixed(1)} %</Badge> : "–"}
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${b.roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {b.bets > 0 ? `${(b.roi * 100).toFixed(1)} %` : "–"}
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${b.profit >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {b.profit.toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </TableShell>
+    </Card>
+  );
+}
+
+function ModulePerformanceTable({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={BarChart3} title="Auswertung nach Modul" accent="gold" />
+      <TableShell headers={["Modul", "Ø Einfluss", "Trefferquote", "ROI", "Stärkstes Modul"]}>
+        {data.modulePerformance.map((m) => (
+          <tr key={m.moduleKey} className="border-t border-base-600/60">
+            <td className="py-2 px-2 font-mono text-xs text-slate-200">{m.label}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{m.averageInfluence.toFixed(2)}</td>
+            <td className="py-2 px-2 font-mono text-xs text-right">
+              {m.gamesWithData > 0 ? <Badge tone={m.hitRate >= 0.5 ? "green" : "red"}>{(m.hitRate * 100).toFixed(1)} %</Badge> : "–"}
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${m.roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {m.gamesWithData > 0 ? `${(m.roi * 100).toFixed(1)} %` : "–"}
+            </td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">
+              {m.strongestCount}× ({m.strongestPct.toFixed(1)} %)
+            </td>
+          </tr>
+        ))}
+      </TableShell>
+    </Card>
+  );
+}
+
+function TableShell({ headers, children }: { headers: string[]; children: ReactNode }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full">
+        <thead>
+          <tr>
+            {headers.map((h, i) => (
+              <th
+                key={h}
+                className={`py-1.5 px-2 font-mono text-[9px] uppercase tracking-wider text-slate-500 ${i === 0 ? "text-left" : "text-right"}`}
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
+    </div>
+  );
+}
+
+function RecommendationsPanel({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={TrendingUp} title="Kalibrierungs-Empfehlungen" accent="teal" />
+      <p className="font-mono text-[10px] text-slate-500 mb-3">
+        Rein informativ, aus den obigen Backtest-Ergebnissen abgeleitet — passt keine Modul-Gewichte automatisch an.
+      </p>
+      <ul className="space-y-2">
+        {data.recommendations.map((r, i) => (
+          <li key={i} className="flex items-start gap-2 font-mono text-xs text-slate-300">
+            <span className="mt-1 h-1.5 w-1.5 rounded-full bg-teal-400 shrink-0" />
+            {r.text}
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
