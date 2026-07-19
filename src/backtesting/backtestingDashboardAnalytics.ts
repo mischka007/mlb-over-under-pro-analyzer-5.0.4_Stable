@@ -1,6 +1,6 @@
-import { createConfidencePerformance, createRiskStats } from "./seasonBacktestRunner";
+import { createConfidencePerformance, createPickPerformance, createRiskStats } from "./seasonBacktestRunner";
 import type { BacktestResult, BacktestSummary } from "./backtestTypes";
-import type { ConfidenceBacktestPerformance, SeasonBacktestRiskStats } from "./seasonBacktestTypes";
+import type { ConfidenceBacktestPerformance, PickBacktestPerformance, SeasonBacktestRiskStats } from "./seasonBacktestTypes";
 import type {
   BacktestDatasetRecord,
   BacktestTimeSeriesPoint,
@@ -8,20 +8,25 @@ import type {
   LineBucketPerformance,
   ModuleBacktestPerformance,
   ModuleKey,
+  PremiumFilterEfficacyStat,
 } from "@/types";
 import { mean } from "@/utils/math";
 
 /**
- * Backtesting PRO Phase 3: Dashboard-Auswertungen.
+ * Backtesting PRO Phase 3 + Tag 6 (Historical Validation): Dashboard-
+ * Auswertungen.
  *
  * Wandelt einen `BacktestDatasetRecord[]` (siehe `backtestingDatasetBuilder.ts`)
- * in die vollständige, aggregierte Auswertung für die neue Backtesting-
- * PRO-Dashboard-Seite um. Kern-Kennzahlen (Monats-Performance, Confidence-
- * Buckets, Drawdown/Streaks) werden dabei über die bereits bestehende,
- * unveränderte `seasonBacktestRunner.ts`-Infrastruktur berechnet — hier
- * neu hinzu kommen ausschließlich: Linien-Auswertung, Modul-Auswertung,
- * Kalibrierungs-Empfehlungen sowie die Zeitreihen/Verteilungen für die
- * Visualisierung.
+ * in die vollständige, aggregierte Auswertung für die Backtesting-PRO-
+ * Dashboard-Seite um. Kern-Kennzahlen (Monats-Performance, Confidence-/
+ * Pick-Buckets, Drawdown/Streaks) werden dabei über die bereits
+ * bestehende, unveränderte `seasonBacktestRunner.ts`-Infrastruktur
+ * berechnet. Tag 6 ergänzt zusätzlich: Over/Under-Genauigkeit (bestehende
+ * `createPickPerformance` wiederverwendet), Premium-Filter-Wirksamkeit,
+ * Durchschnitts-Kennzahlen (Fair Odds/Edge/Expected Runs) sowie eine
+ * erweiterte Modul-Auswertung (Ø Gewichtung, positive/negative
+ * Auswirkung, Gewichtungs-Empfehlung je Modul) und eine Best-/Worst-
+ * Bereich-Zusammenfassung.
  */
 
 const ALL_MODULE_KEYS: ModuleKey[] = ["form", "pitcher", "bullpen", "offense", "weather", "ballpark", "h2h", "market"];
@@ -34,9 +39,18 @@ export interface BacktestingDashboardData {
   summary: BacktestSummary;
   averageEv: number;
   averageConfidence: number;
+  /** Ø Fair Odds über alle platzierten Wetten (Dezimalquote). */
+  averageFairOdds: number;
+  /** Ø Expected Edge in Prozentpunkten über alle platzierten Wetten. */
+  averageEdge: number;
+  /** Ø modellseitig erwartete Gesamt-Runs über alle ausgewerteten Spiele. */
+  averageExpectedRuns: number;
   confidenceBuckets: ConfidenceBacktestPerformance[];
+  /** Over/Under-Genauigkeit — bestehende Pick-Performance-Funktion wiederverwendet. */
+  overUnderPerformance: PickBacktestPerformance[];
   lineBuckets: LineBucketPerformance[];
   modulePerformance: ModuleBacktestPerformance[];
+  premiumFilterEfficacy: PremiumFilterEfficacyStat;
   risk: SeasonBacktestRiskStats;
   recommendations: CalibrationRecommendation[];
   roiTimeSeries: BacktestTimeSeriesPoint[];
@@ -46,6 +60,10 @@ export interface BacktestingDashboardData {
   confidenceDistribution: { bucket: string; count: number }[];
   profitByLine: { line: number; profit: number }[];
   profitByModule: { label: string; profit: number }[];
+  /** Kurzbeschreibung des Modell-Bereichs (Modul/Confidence/Linie) mit dem höchsten ROI. */
+  bestModelArea: string;
+  /** Kurzbeschreibung des Modell-Bereichs mit dem niedrigsten ROI. */
+  worstModelArea: string;
 }
 
 /**
@@ -148,11 +166,32 @@ export function computeLineBucketPerformance(
 }
 
 /**
+ * Generiert eine rein informative, aus Trefferquote/ROI abgeleitete
+ * Gewichtungs-Empfehlung für ein einzelnes Modul. Passt selbst keine
+ * Gewichte an (siehe `@/backtesting/historicalCalibration` für die
+ * tatsächliche, optionale Gewichts-Kalibrierung).
+ */
+function describeModuleWeightingRecommendation(label: string, roi: number, hitRate: number, gamesWithData: number): string {
+  if (gamesWithData < 10) {
+    return `Zu wenige Spiele (${gamesWithData}) für eine belastbare Empfehlung zu ${label}.`;
+  }
+  if (roi > 0.05 && hitRate > 0.52) {
+    return `${label}-Modul zeigt im Backtest-Zeitraum überdurchschnittliche Performance — Gewichtung beibehalten oder leicht erhöhen.`;
+  }
+  if (roi < -0.05 || hitRate < 0.48) {
+    return `${label}-Modul zeigt im Backtest-Zeitraum unterdurchschnittliche Performance — Gewichtung kritisch prüfen.`;
+  }
+  return `${label}-Modul liegt im Backtest-Zeitraum im neutralen Bereich — keine Anpassung angezeigt.`;
+}
+
+/**
  * Auswertung je Modul über alle Spiele hinweg: durchschnittlicher
- * Einfluss, Trefferquote (stimmte die Modul-Richtung mit dem
+ * Einfluss, durchschnittliche tatsächliche Gewichtung, Anteil positiver/
+ * negativer Ausschläge, Trefferquote (stimmte die Modul-Richtung mit dem
  * tatsächlichen Ergebnis überein?), ROI (nur Spiele, in denen die
- * Modul-Richtung mit dem platzierten Pick übereinstimmte) sowie wie oft
- * dieses Modul das mit Abstand einflussreichste war.
+ * Modul-Richtung mit dem platzierten Pick übereinstimmte), wie oft
+ * dieses Modul das mit Abstand einflussreichste war, sowie eine rein
+ * informative Gewichtungs-Empfehlung.
  */
 export function computeModulePerformance(records: BacktestDatasetRecord[]): ModuleBacktestPerformance[] {
   const decidedRecords = records.filter((r) => r.actualResult !== "push");
@@ -175,6 +214,12 @@ export function computeModulePerformance(records: BacktestDatasetRecord[]): Modu
     const label = entriesWithData[0]?.influence.label ?? moduleKey;
 
     const averageInfluence = entriesWithData.length > 0 ? mean(entriesWithData.map((e) => e.influence.influence)) : 0;
+    const averageWeight = entriesWithData.length > 0 ? mean(entriesWithData.map((e) => e.influence.weight)) : 0;
+
+    const positiveInfluenceCount = entriesWithData.filter((e) => e.influence.direction === "over").length;
+    const negativeInfluenceCount = entriesWithData.filter((e) => e.influence.direction === "under").length;
+    const positiveInfluencePct = entriesWithData.length > 0 ? (positiveInfluenceCount / entriesWithData.length) * 100 : 0;
+    const negativeInfluencePct = entriesWithData.length > 0 ? (negativeInfluenceCount / entriesWithData.length) * 100 : 0;
 
     const directionalEntries = entriesWithData.filter((e) => e.influence.direction !== "neutral");
     const correctDirectional = directionalEntries.filter((e) => e.influence.direction === e.record.actualResult).length;
@@ -193,11 +238,17 @@ export function computeModulePerformance(records: BacktestDatasetRecord[]): Modu
       moduleKey,
       label,
       averageInfluence,
+      averageWeight,
+      positiveInfluenceCount,
+      positiveInfluencePct,
+      negativeInfluenceCount,
+      negativeInfluencePct,
       hitRate,
       roi,
       strongestCount,
       strongestPct,
       gamesWithData: entriesWithData.length,
+      weightingRecommendation: describeModuleWeightingRecommendation(label, roi, hitRate, entriesWithData.length),
     };
   });
 }
@@ -355,6 +406,72 @@ function buildProfitByModule(modulePerformance: ModuleBacktestPerformance[]): { 
 }
 
 /**
+ * Wirksamkeits-Auswertung des Premium-Filters: vergleicht Trefferquote
+ * und ROI von Spielen, die den Filter bestanden haben, mit denen, die
+ * ihn nicht bestanden haben. Der Premium-Filter ist bewusst als
+ * separate Auswertung geführt (nicht als 9. `ModuleKey`), da er
+ * architektonisch ein hartes Gate ist, kein gewichtetes Konsens-Modul.
+ */
+function computePremiumFilterEfficacy(records: BacktestDatasetRecord[]): PremiumFilterEfficacyStat {
+  const decided = records.filter((r) => r.hit !== null);
+  const passed = decided.filter((r) => r.premiumFilterPassed);
+  const failed = decided.filter((r) => !r.premiumFilterPassed);
+
+  const winsPassed = passed.filter((r) => r.hit === true).length;
+  const winsFailed = failed.filter((r) => r.hit === true).length;
+
+  const hitRatePassed = passed.length > 0 ? winsPassed / passed.length : 0;
+  const hitRateFailed = failed.length > 0 ? winsFailed / failed.length : 0;
+
+  const roiPassed = passed.length > 0 ? passed.reduce((sum, r) => sum + r.profitLoss, 0) / passed.length : 0;
+  const roiFailed = failed.length > 0 ? failed.reduce((sum, r) => sum + r.profitLoss, 0) / failed.length : 0;
+
+  return { gamesPassed: passed.length, gamesFailed: failed.length, hitRatePassed, hitRateFailed, roiPassed, roiFailed };
+}
+
+/**
+ * Fasst den Modell-Bereich (Modul, Confidence-Bucket oder Wettlinie) mit
+ * dem höchsten bzw. niedrigsten ROI in einem lesbaren Satz zusammen —
+ * für die "Beste und schlechteste Modellbereiche"-Übersicht im
+ * Dashboard. Berücksichtigt nur Bereiche mit ausreichender Datenbasis
+ * (mindestens 10 Spiele/Wetten), um Zufallsausreißer zu vermeiden.
+ */
+function computeBestWorstAreas(params: {
+  modulePerformance: ModuleBacktestPerformance[];
+  confidenceBuckets: ConfidenceBacktestPerformance[];
+  lineBuckets: LineBucketPerformance[];
+}): { bestModelArea: string; worstModelArea: string } {
+  type Candidate = { label: string; roi: number; sampleSize: number };
+
+  const candidates: Candidate[] = [
+    ...params.modulePerformance
+      .filter((m) => m.gamesWithData >= 10)
+      .map((m) => ({ label: `Modul "${m.label}"`, roi: m.roi, sampleSize: m.gamesWithData })),
+    ...params.confidenceBuckets
+      .filter((b) => b.decidedBets >= 10)
+      .map((b) => ({ label: `Confidence-Bereich "${b.bucket}"`, roi: b.roi, sampleSize: b.decidedBets })),
+    ...params.lineBuckets
+      .filter((b) => b.decidedBets >= 10)
+      .map((b) => ({ label: `Wettlinie ${b.line.toFixed(1)}`, roi: b.roi, sampleSize: b.decidedBets })),
+  ];
+
+  if (candidates.length === 0) {
+    return {
+      bestModelArea: "Noch nicht genügend Daten (mindestens 10 Wetten je Bereich) für eine belastbare Aussage.",
+      worstModelArea: "Noch nicht genügend Daten (mindestens 10 Wetten je Bereich) für eine belastbare Aussage.",
+    };
+  }
+
+  const best = [...candidates].sort((a, b) => b.roi - a.roi)[0];
+  const worst = [...candidates].sort((a, b) => a.roi - b.roi)[0];
+
+  return {
+    bestModelArea: `${best.label}: ROI ${(best.roi * 100).toFixed(1)} % (${best.sampleSize} Wetten).`,
+    worstModelArea: `${worst.label}: ROI ${(worst.roi * 100).toFixed(1)} % (${worst.sampleSize} Wetten).`,
+  };
+}
+
+/**
  * Baut das vollständige, aggregierte Datenpaket für die Backtesting-
  * PRO-Dashboard-Seite aus einem `BacktestDatasetRecord[]` auf.
  */
@@ -367,21 +484,37 @@ export function buildBacktestingDashboardData(records: BacktestDatasetRecord[]):
   const averageEv = evValues.length > 0 ? mean(evValues) : 0;
   const averageConfidence = decidedRecords.length > 0 ? mean(decidedRecords.map((r) => r.confidence)) * 100 : 0;
 
+  const fairOddsValues = decidedRecords.map((r) => r.fairOdds).filter((v): v is number => v !== null);
+  const averageFairOdds = fairOddsValues.length > 0 ? mean(fairOddsValues) : 0;
+
+  const edgeValues = decidedRecords.map((r) => r.edge).filter((v): v is number => v !== null);
+  const averageEdge = edgeValues.length > 0 ? mean(edgeValues) : 0;
+
+  const averageExpectedRuns = records.length > 0 ? mean(records.map((r) => r.expectedRuns)) : 0;
+
   const confidenceBuckets = createConfidencePerformance(results);
+  const overUnderPerformance = createPickPerformance(results);
   const lineBuckets = computeLineBucketPerformance(records);
   const modulePerformance = computeModulePerformance(records);
+  const premiumFilterEfficacy = computePremiumFilterEfficacy(records);
   const risk = createRiskStats(results);
 
   const recommendations = generateCalibrationRecommendations({ modulePerformance, confidenceBuckets, summary, averageEv });
+  const { bestModelArea, worstModelArea } = computeBestWorstAreas({ modulePerformance, confidenceBuckets, lineBuckets });
 
   return {
     records,
     summary,
     averageEv,
     averageConfidence,
+    averageFairOdds,
+    averageEdge,
+    averageExpectedRuns,
     confidenceBuckets,
+    overUnderPerformance,
     lineBuckets,
     modulePerformance,
+    premiumFilterEfficacy,
     risk,
     recommendations,
     roiTimeSeries: buildRoiTimeSeries(records),
@@ -391,5 +524,7 @@ export function buildBacktestingDashboardData(records: BacktestDatasetRecord[]):
     confidenceDistribution: buildConfidenceDistribution(records),
     profitByLine: buildProfitByLine(lineBuckets),
     profitByModule: buildProfitByModule(modulePerformance),
+    bestModelArea,
+    worstModelArea,
   };
 }

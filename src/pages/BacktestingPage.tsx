@@ -192,9 +192,12 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
             <ProfitByModuleChart data={data} />
           </div>
 
+          <BestWorstAreasPanel data={data} />
+          <OverUnderAccuracyTable data={data} />
           <ConfidenceBucketTable data={data} />
           <LineBucketTable data={data} />
           <ModulePerformanceTable data={data} />
+          <PremiumFilterEfficacyPanel data={data} />
           <RecommendationsPanel data={data} />
         </div>
       )}
@@ -264,6 +267,9 @@ function SummaryCards({ data, loadedGameCount }: { data: BacktestingDashboardDat
     { label: "Gewinn/Verlust", value: `${data.summary.profit >= 0 ? "+" : ""}${data.summary.profit.toFixed(2)} u`, tone: data.summary.profit >= 0 ? "green" : "red" },
     { label: "Ø Expected Value", value: `${data.averageEv >= 0 ? "+" : ""}${data.averageEv.toFixed(1)} %` },
     { label: "Ø Confidence", value: `${data.averageConfidence.toFixed(1)} %` },
+    { label: "Ø Fair Odds", value: data.averageFairOdds.toFixed(2) },
+    { label: "Ø Edge", value: `${data.averageEdge >= 0 ? "+" : ""}${data.averageEdge.toFixed(1)} %` },
+    { label: "Ø Expected Runs", value: data.averageExpectedRuns.toFixed(2) },
     { label: "Längste Gewinnserie", value: String(data.risk.longestWinStreak) },
     { label: "Längste Verlustserie", value: String(data.risk.longestLossStreak) },
     { label: "Max. Drawdown", value: `${data.risk.maximumDrawdown.toFixed(2)} u (${data.risk.maximumDrawdownPct.toFixed(1)} %)`, tone: "red" },
@@ -486,11 +492,15 @@ function ModulePerformanceTable({ data }: { data: BacktestingDashboardData }) {
   return (
     <Card accent="gold">
       <SectionHeader icon={BarChart3} title="Auswertung nach Modul" accent="gold" />
-      <TableShell headers={["Modul", "Ø Einfluss", "Trefferquote", "ROI", "Stärkstes Modul"]}>
+      <TableShell headers={["Modul", "Ø Einfluss", "Ø Gewichtung", "Pos. / Neg.", "Trefferquote", "ROI", "Stärkstes Modul"]}>
         {data.modulePerformance.map((m) => (
           <tr key={m.moduleKey} className="border-t border-base-600/60">
             <td className="py-2 px-2 font-mono text-xs text-slate-200">{m.label}</td>
             <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{m.averageInfluence.toFixed(2)}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{(m.averageWeight * 100).toFixed(0)} %</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">
+              {m.positiveInfluencePct.toFixed(0)} % / {m.negativeInfluencePct.toFixed(0)} %
+            </td>
             <td className="py-2 px-2 font-mono text-xs text-right">
               {m.gamesWithData > 0 ? <Badge tone={m.hitRate >= 0.5 ? "green" : "red"}>{(m.hitRate * 100).toFixed(1)} %</Badge> : "–"}
             </td>
@@ -503,6 +513,13 @@ function ModulePerformanceTable({ data }: { data: BacktestingDashboardData }) {
           </tr>
         ))}
       </TableShell>
+      <div className="mt-3 pt-3 border-t border-base-600/60 space-y-1.5">
+        {data.modulePerformance.map((m) => (
+          <p key={m.moduleKey} className="font-mono text-[10px] text-slate-500">
+            <span className="text-slate-300">{m.label}:</span> {m.weightingRecommendation}
+          </p>
+        ))}
+      </div>
     </Card>
   );
 }
@@ -526,6 +543,82 @@ function TableShell({ headers, children }: { headers: string[]; children: ReactN
         <tbody>{children}</tbody>
       </table>
     </div>
+  );
+}
+
+function OverUnderAccuracyTable({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={BarChart3} title="Over / Under Genauigkeit" accent="teal" />
+      <TableShell headers={["Seite", "Wetten", "Trefferquote", "ROI", "Profit"]}>
+        {data.overUnderPerformance.map((p) => (
+          <tr key={p.pick} className="border-t border-base-600/60">
+            <td className="py-2 px-2 font-mono text-xs text-slate-200 uppercase">{p.pick}</td>
+            <td className="py-2 px-2 font-mono text-xs text-slate-400 text-right">{p.decidedBets}</td>
+            <td className="py-2 px-2 font-mono text-xs text-right">
+              {p.decidedBets > 0 ? <Badge tone={p.hitRate >= 0.5 ? "green" : "red"}>{(p.hitRate * 100).toFixed(1)} %</Badge> : "–"}
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${p.roi >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {p.decidedBets > 0 ? `${(p.roi * 100).toFixed(1)} %` : "–"}
+            </td>
+            <td className={`py-2 px-2 font-mono text-xs text-right ${p.profit >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {p.profit.toFixed(2)}
+            </td>
+          </tr>
+        ))}
+      </TableShell>
+    </Card>
+  );
+}
+
+function PremiumFilterEfficacyPanel({ data }: { data: BacktestingDashboardData }) {
+  const efficacy = data.premiumFilterEfficacy;
+  return (
+    <Card accent="gold">
+      <SectionHeader icon={BarChart3} title="Premium-Filter-Wirksamkeit" accent="gold" />
+      <p className="font-mono text-[10px] text-slate-500 mb-3">
+        Vergleicht Spiele, die den Premium-Filter (Lineup/Pitcher/Wetter bestätigt, positive EV) bestanden haben, mit solchen, die ihn nicht
+        bestanden haben.
+      </p>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">Filter bestanden ({efficacy.gamesPassed})</div>
+          <div className="flex items-center gap-2">
+            <Badge tone={efficacy.hitRatePassed >= 0.5 ? "green" : "red"}>{(efficacy.hitRatePassed * 100).toFixed(1)} % Trefferquote</Badge>
+            <span className={`font-mono text-xs ${efficacy.roiPassed >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              ROI {(efficacy.roiPassed * 100).toFixed(1)} %
+            </span>
+          </div>
+        </div>
+        <div>
+          <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">Filter nicht bestanden ({efficacy.gamesFailed})</div>
+          <div className="flex items-center gap-2">
+            <Badge tone={efficacy.hitRateFailed >= 0.5 ? "green" : "red"}>{(efficacy.hitRateFailed * 100).toFixed(1)} % Trefferquote</Badge>
+            <span className={`font-mono text-xs ${efficacy.roiFailed >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              ROI {(efficacy.roiFailed * 100).toFixed(1)} %
+            </span>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function BestWorstAreasPanel({ data }: { data: BacktestingDashboardData }) {
+  return (
+    <Card accent="teal">
+      <SectionHeader icon={TrendingUp} title="Beste und schlechteste Modellbereiche" accent="teal" />
+      <div className="space-y-2">
+        <p className="font-mono text-xs text-posgreen-400">
+          <span className="uppercase text-[9px] tracking-wider text-slate-500 mr-2">Bester Bereich</span>
+          {data.bestModelArea}
+        </p>
+        <p className="font-mono text-xs text-negred-400">
+          <span className="uppercase text-[9px] tracking-wider text-slate-500 mr-2">Schwächster Bereich</span>
+          {data.worstModelArea}
+        </p>
+      </div>
+    </Card>
   );
 }
 

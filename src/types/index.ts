@@ -772,6 +772,8 @@ export interface BacktestDatasetRecord {
   gameId: number;
   /** Offizieller Spieltag, YYYY-MM-DD. */
   date: string;
+  /** MLB-Saison (Kalenderjahr des Spieltags). */
+  season: string;
   league: string;
   homeTeam: string;
   awayTeam: string;
@@ -780,10 +782,20 @@ export interface BacktestDatasetRecord {
   prediction: "over" | "under" | null;
   overProbability: number;
   underProbability: number;
+  /** Modellseitig erwartete Runs des Heimteams (aus der Prediction Engine PRO). */
+  expectedRunsHome: number | null;
+  /** Modellseitig erwartete Runs des Auswärtsteams. */
+  expectedRunsAway: number | null;
   expectedRuns: number;
   expectedRunDifferential: number | null;
   /** Faire Dezimalquote der vorhergesagten Seite (`null` ohne Pick). */
   fairOdds: number | null;
+  /**
+   * Modellseitige "Fair Total Line" (aus der Poisson-Verteilung), für den
+   * Vergleich "Prediction vs. Closing Betting Line" — `line` oben ist die
+   * tatsächlich verwendete Wettlinie zur Wettzeit.
+   */
+  modelFairLine: number;
   /** Expected Edge in Prozentpunkten (`null` ohne Pick). */
   edge: number | null;
   /** Expected Value in Prozent des Einsatzes (`null` ohne Pick). */
@@ -793,6 +805,8 @@ export interface BacktestDatasetRecord {
 
   confidence: number;
   premiumRating: BetTier;
+  /** Ob der Premium-Filter (Lineup/Pitcher/Wetter bestätigt, positive EV etc.) für dieses Spiel bestanden wurde. */
+  premiumFilterPassed: boolean;
 
   actualResult: "over" | "under" | "push";
   actualRuns: number;
@@ -825,6 +839,16 @@ export interface ModuleBacktestPerformance {
   label: string;
   /** Durchschnitt von `weight * (score - 50)` über alle Spiele mit Daten für dieses Modul. */
   averageInfluence: number;
+  /** Durchschnittliches tatsächliches Gewicht (0–1) dieses Moduls im Konsens über alle Spiele mit Daten. */
+  averageWeight: number;
+  /** Anzahl Spiele, in denen dieses Modul Richtung Over ausschlug. */
+  positiveInfluenceCount: number;
+  /** `positiveInfluenceCount` als Anteil (0–100) aller Spiele mit Daten. */
+  positiveInfluencePct: number;
+  /** Anzahl Spiele, in denen dieses Modul Richtung Under ausschlug. */
+  negativeInfluenceCount: number;
+  /** `negativeInfluenceCount` als Anteil (0–100) aller Spiele mit Daten. */
+  negativeInfluencePct: number;
   /** Trefferquote der Spiele, in denen die Richtung dieses Moduls mit dem tatsächlichen Ergebnis übereinstimmte. */
   hitRate: number;
   /** ROI der Wetten, bei denen die Richtung dieses Moduls mit dem platzierten Pick übereinstimmte. */
@@ -834,6 +858,8 @@ export interface ModuleBacktestPerformance {
   /** `strongestCount` als Anteil (0–100) aller ausgewerteten Spiele. */
   strongestPct: number;
   gamesWithData: number;
+  /** Automatisch aus Trefferquote/ROI abgeleitete, rein informative Empfehlung — passt keine Gewichte an. */
+  weightingRecommendation: string;
 }
 
 /**
@@ -847,6 +873,23 @@ export interface CalibrationRecommendation {
   text: string;
   /** Kennzahl, auf der die Empfehlung beruht (z. B. ROI-Wert), für Transparenz. */
   basedOnValue: number;
+}
+
+/**
+ * Wirksamkeits-Auswertung des Premium-Filters (Lineup/Pitcher/Wetter
+ * bestätigt, positive EV/Kelly etc.). Der Premium-Filter ist bewusst
+ * KEIN gewichtetes Konsens-Modul (kein `ModuleKey`), sondern ein hartes
+ * Gate — daher separat von `ModuleBacktestPerformance` ausgewertet:
+ * vergleicht die Trefferquote/ROI von Spielen, die den Filter bestanden
+ * haben, mit denen, die ihn nicht bestanden haben.
+ */
+export interface PremiumFilterEfficacyStat {
+  gamesPassed: number;
+  gamesFailed: number;
+  hitRatePassed: number;
+  hitRateFailed: number;
+  roiPassed: number;
+  roiFailed: number;
 }
 
 /** Ein Datenpunkt einer Zeitreihe für die Backtesting-PRO-Visualisierung. */
