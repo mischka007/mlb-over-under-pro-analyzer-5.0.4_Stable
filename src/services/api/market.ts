@@ -21,9 +21,34 @@ export interface MarketSnapshot {
  * Datenfeeds (z. B. Action Network) und bleiben bewusst leer.
  */
 export async function fetchMarketSnapshot(homeTeamName: string, awayTeamName: string): Promise<MarketSnapshot | null> {
-  const odds = await fetchOddsForMatchup(homeTeamName, awayTeamName);
+  const emptySnapshot: MarketSnapshot = {
+    openingLine: null,
+    currentLine: null,
+    bestOddsOver: null,
+    bestOddsUnder: null,
+    bookmakerCount: 0,
+    publicOverPct: null,
+    sharpOverPct: null,
+  };
+
+  // `fetchOddsForMatchup()` wirft bewusst, wenn kein passendes Spiel bei
+  // The Odds API gefunden wird (z. B. noch nicht gelistet, verschoben).
+  // Das darf den Ladevorgang des restlichen Spiels nicht abbrechen —
+  // wird identisch zum "keine Quote verfügbar"-Fall (kein API-Key)
+  // behandelt: leere, transparente Markt-Momentaufnahme statt Absturz.
+  let odds: Awaited<ReturnType<typeof fetchOddsForMatchup>> = null;
+  try {
+    odds = await fetchOddsForMatchup(homeTeamName, awayTeamName);
+  } catch (oddsError) {
+    console.debug(
+      `[Market] Keine Odds für "${awayTeamName}" @ "${homeTeamName}" — Markt-Daten bleiben leer.`,
+      oddsError instanceof Error ? oddsError.message : oddsError
+    );
+    return emptySnapshot;
+  }
+
   if (!odds || odds.length === 0) {
-    return { openingLine: null, currentLine: null, bestOddsOver: null, bestOddsUnder: null, bookmakerCount: 0, publicOverPct: null, sharpOverPct: null };
+    return emptySnapshot;
   }
 
   const currentLine = odds[0].line;

@@ -33,7 +33,25 @@ export function useTodaysGames() {
       const schedule = await fetchGamesForDate();
       const withOdds = await Promise.all(
         schedule.map(async (g) => {
-          const odds = await fetchOddsForMatchup(g.homeTeamName, g.awayTeamName);
+          // Ein einzelnes Spiel, für das The Odds API (noch) kein
+          // passendes Match liefert (z. B. noch nicht gelistet, Doppel-
+          // header, verschobenes Spiel), darf nicht die gesamte
+          // Spieleliste zum Absturz bringen — genau das passierte vorher,
+          // weil `fetchOddsForMatchup()` bei keinem Treffer wirft und das
+          // ungefangen im `Promise.all()` die komplette Liste durch eine
+          // einzelne Fehlermeldung ersetzte. Ein fehlendes Odds-Match
+          // wird jetzt wie "keine Quote verfügbar" behandelt (Linie
+          // bleibt leer, transparent statt erfunden) statt die restlichen,
+          // erfolgreich geladenen Spiele mit zu verwerfen.
+          let odds: Awaited<ReturnType<typeof fetchOddsForMatchup>> = null;
+          try {
+            odds = await fetchOddsForMatchup(g.homeTeamName, g.awayTeamName);
+          } catch (oddsError) {
+            console.debug(
+              `[Today's Games] Keine Odds für "${g.awayTeamName}" @ "${g.homeTeamName}" — Spiel wird ohne Linie angezeigt.`,
+              oddsError instanceof Error ? oddsError.message : oddsError
+            );
+          }
           const best = odds?.[0] ?? null;
           const summary: GameCardSummary = {
             gamePk: g.gamePk,
