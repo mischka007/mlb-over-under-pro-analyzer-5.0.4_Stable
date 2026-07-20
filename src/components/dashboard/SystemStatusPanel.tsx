@@ -19,11 +19,19 @@ const APP_STATUS = "Stable";
  * gesetzten Konstanten (`define`, siehe `src/vite-env.d.ts`) — keine
  * geschätzten Werte. `__GIT_REVISION__` ist `null`, wenn kein
  * Git-Repository vorhanden ist ("falls vorhanden").
+ *
+ * Bugfix: `typeof ... !== "undefined"`-Absicherung, falls der
+ * Dev-Server nach einer Änderung an `vite.config.ts` noch nicht neu
+ * gestartet wurde (Vite übernimmt `define`-Änderungen nicht per
+ * Hot-Reload) oder die Konstante aus einem anderen Grund fehlt — eine
+ * rein informative Anzeige darf niemals die gesamte App zum Absturz
+ * bringen.
  */
-const buildDate = new Date(__BUILD_TIMESTAMP__);
-const buildDateLabel = buildDate.toLocaleDateString("de-DE");
-const buildTimeLabel = buildDate.toLocaleTimeString("de-DE");
-const gitRevisionLabel = __GIT_REVISION__ ?? "nicht verfügbar";
+const buildTimestamp = typeof __BUILD_TIMESTAMP__ !== "undefined" ? __BUILD_TIMESTAMP__ : null;
+const buildDate = buildTimestamp !== null ? new Date(buildTimestamp) : null;
+const buildDateLabel = buildDate !== null ? buildDate.toLocaleDateString("de-DE") : "nicht verfügbar";
+const buildTimeLabel = buildDate !== null ? buildDate.toLocaleTimeString("de-DE") : "nicht verfügbar";
+const gitRevisionLabel = (typeof __GIT_REVISION__ !== "undefined" ? __GIT_REVISION__ : null) ?? "nicht verfügbar";
 
 /**
  * Tag 9 — Release Dashboard.
