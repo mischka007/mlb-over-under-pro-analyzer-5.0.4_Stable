@@ -145,6 +145,7 @@ const emptyMarket = (): MarketInput => ({
   closingLine: "",
   publicOverPct: "",
   sharpOverPct: "",
+  marketScore: "",
 });
 
 const emptySetup = (): GameSetup => ({

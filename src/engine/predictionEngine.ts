@@ -94,6 +94,14 @@ export interface DynamicWeightingContext {
   ballparkRunFactor: number | null;
   marketOpeningLine: number | null;
   marketCurrentLine: number | null;
+  /**
+   * Version 6.0 (Paket 4): destillierter 0–100-Score aus der Market
+   * Intelligence Engine (siehe `@/engine/marketIntelligenceEngine`).
+   * `null`, wenn keine Marktdaten geladen wurden — dann bleibt der
+   * zusätzliche Markt-Gewichtungsfaktor unten inaktiv, kein erfundener
+   * Wert.
+   */
+  marketScore: number | null;
 }
 
 /**
@@ -201,6 +209,21 @@ export function applyDynamicWeighting(
       1.3,
       `Große Marktbewegung erkannt (${context.marketOpeningLine.toFixed(1)} → ${context.marketCurrentLine.toFixed(1)}) — Market-Einfluss steigt.`
     );
+  }
+
+  // Version 6.0 (Paket 4), Schritt 6: "nicht einfach addieren, sondern
+  // intelligent gewichten" — der Markt-Einfluss skaliert mit der
+  // nachgewiesenen Marktqualität (Market Score aus der Market
+  // Intelligence Engine: Bewegungsstärke, Buchmacher-Konsens, Sharp-/
+  // Steam-Signale, Datenqualität), statt bei jeder Bewegung pauschal
+  // gleich stark zu wirken. Bewusst eng begrenzt (0.85×–1.2×) — "Markt
+  // darf niemals allein entscheiden".
+  if (context.marketScore !== null) {
+    if (context.marketScore >= 70) {
+      addFactor("market", 1.2, `Hohe Marktqualität erkannt (Market Score ${context.marketScore}/100) — Market-Einfluss steigt zusätzlich.`);
+    } else if (context.marketScore <= 30) {
+      addFactor("market", 0.85, `Niedrige Marktqualität erkannt (Market Score ${context.marketScore}/100) — Market-Einfluss sinkt.`);
+    }
   }
 
   const adjustedModules = modules.map((module) => {

@@ -4012,14 +4012,21 @@ export function scoreMarket(
 
     score,
 
-    weight:
-      0,
-
     hasData:
       hasAnyValue([
         m.openingLine,
         m.currentLine,
       ]),
+
+    // Bugfix (Version 6.0, Paket 4): war zuvor hart auf 0 gesetzt, wodurch
+    // das Markt-Modul unabhängig vom Score NIE Einfluss auf den Konsens
+    // hatte (0 × jeder Dynamic-Weighting-Faktor bleibt 0) — auch die
+    // bestehende "große Marktbewegung"-Regel in `predictionEngine.ts` griff
+    // dadurch faktisch nie. Basis-Gewicht analog zu `scoreH2H()` (0.1) als
+    // bewusst moderates, sekundäres Signal — "Markt darf niemals allein
+    // entscheiden" (Schritt 6), aber jetzt tatsächlich mitwirken.
+    weight:
+      0.1,
 
     expectedRuns:
       null,

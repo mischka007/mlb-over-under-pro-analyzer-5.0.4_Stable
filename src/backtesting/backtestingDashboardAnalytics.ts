@@ -6,6 +6,7 @@ import type {
   BacktestTimeSeriesPoint,
   CalibrationRecommendation,
   LineBucketPerformance,
+  MarketQualityBucketPerformance,
   ModuleBacktestPerformance,
   ModuleKey,
   PremiumFilterEfficacyStat,
@@ -49,6 +50,8 @@ export interface BacktestingDashboardData {
   /** Over/Under-Genauigkeit — bestehende Pick-Performance-Funktion wiederverwendet. */
   overUnderPerformance: PickBacktestPerformance[];
   lineBuckets: LineBucketPerformance[];
+  /** Version 6.0 (Paket 4), Schritt 9: ROI/Yield nach Marktqualität (Market Score). */
+  marketQualityBuckets: MarketQualityBucketPerformance[];
   modulePerformance: ModuleBacktestPerformance[];
   premiumFilterEfficacy: PremiumFilterEfficacyStat;
   risk: SeasonBacktestRiskStats;
@@ -125,6 +128,48 @@ function computeSummary(results: BacktestResult[]): BacktestSummary {
  * historische Linien (z. B. 8.0 vs. leicht abweichende Buchmacher-
  * Linien) sauber ausgewertet werden.
  */
+/**
+ * Version 6.0 (Paket 4), Schritt 9: ROI/Yield gruppiert nach Market
+ * Score (Marktqualität). Bei Bulk-Backtests ist `record.marketScore`
+ * aktuell konsequent `null` (siehe Typ-Dokumentation von
+ * `BacktestDatasetRecord` — keine historischen Multi-Buchmacher-Daten
+ * verfügbar) — diese Funktion liefert dann leere/Null-Buckets statt
+ * erfundener Werte, ist aber vollständig korrekt für den Moment, in
+ * dem echte historische Marktdaten verfügbar werden.
+ */
+const MARKET_QUALITY_BUCKETS: { label: string; min: number; max: number }[] = [
+  { label: "Niedrig (0–39)", min: 0, max: 39 },
+  { label: "Moderat (40–69)", min: 40, max: 69 },
+  { label: "Hoch (70–100)", min: 70, max: 100 },
+];
+
+export function computeMarketQualityPerformance(records: BacktestDatasetRecord[]): MarketQualityBucketPerformance[] {
+  return MARKET_QUALITY_BUCKETS.map(({ label, min, max }) => {
+    const group = records.filter((r) => r.marketScore !== null && r.marketScore >= min && r.marketScore <= max);
+
+    let wins = 0;
+    let losses = 0;
+    let pushes = 0;
+    let profit = 0;
+
+    for (const record of group) {
+      if (record.hit === true) wins++;
+      else if (record.hit === false) losses++;
+      else pushes++;
+      profit += record.profitLoss;
+    }
+
+    const decidedBets = wins + losses;
+    const hitRate = decidedBets > 0 ? wins / decidedBets : 0;
+    const roi = group.length > 0 ? profit / group.length : 0;
+    const yieldValue = decidedBets > 0 ? profit / decidedBets : 0;
+
+    return { label, minScore: min, maxScore: max, bets: group.length, wins, losses, pushes, decidedBets, hitRate, roi, yield: yieldValue, profit };
+  });
+}
+
+/**
+ * Auswertung einer Gruppe von Spielen mit derselben (gerundeten) Wettlinie. */
 export function computeLineBucketPerformance(
   records: BacktestDatasetRecord[],
   buckets: number[] = DEFAULT_LINE_BUCKETS
@@ -520,6 +565,7 @@ export function buildBacktestingDashboardData(records: BacktestDatasetRecord[]):
   const confidenceBuckets = createConfidencePerformance(results);
   const overUnderPerformance = createPickPerformance(results);
   const lineBuckets = computeLineBucketPerformance(records);
+  const marketQualityBuckets = computeMarketQualityPerformance(records);
   const modulePerformance = computeModulePerformance(records);
   const premiumFilterEfficacy = computePremiumFilterEfficacy(records);
   const risk = createRiskStats(results);
@@ -538,6 +584,7 @@ export function buildBacktestingDashboardData(records: BacktestDatasetRecord[]):
     confidenceBuckets,
     overUnderPerformance,
     lineBuckets,
+    marketQualityBuckets,
     modulePerformance,
     premiumFilterEfficacy,
     risk,

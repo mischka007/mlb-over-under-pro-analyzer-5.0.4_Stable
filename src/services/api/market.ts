@@ -1,5 +1,6 @@
-import { fetchOddsForMatchup } from "@/services/api/odds";
-import { recordAndGetOpeningLine } from "@/services/api/odds";
+import type { MarketIntelligenceResult } from "@/types";
+import { fetchOddsForMatchup, recordAndGetOpeningLine, recordLineSnapshot } from "@/services/api/odds";
+import { computeMarketIntelligence } from "@/engine/marketIntelligenceEngine";
 
 export interface MarketSnapshot {
   openingLine: number | null;
@@ -10,6 +11,17 @@ export interface MarketSnapshot {
   /** Erfordert eine kostenpflichtige Datenquelle für Einsatzverteilung — nicht verfügbar */
   publicOverPct: null;
   sharpOverPct: null;
+  /**
+   * Version 6.0 (Paket 4): vollständiges Market-Intelligence-Ergebnis
+   * (Line Movement, Sharp/Reverse/Steam-Heuristiken, Marktkonsens/
+   * -volatilität, CLV, Market Score). `null`, wenn keine Odds verfügbar
+   * sind. CLV bleibt an dieser Stelle "unbekannt" (kein Pick bekannt —
+   * die Modell-Prognose läuft erst NACH dem Laden dieser Markt-Daten);
+   * für eine echte CLV-Berechnung siehe `computeMarketIntelligence()`
+   * direkt mit einem bekannten `pickDirection`, z. B. beim Speichern in
+   * der Historie.
+   */
+  marketIntelligence: MarketIntelligenceResult | null;
 }
 
 /**
@@ -19,6 +31,11 @@ export interface MarketSnapshot {
  * wiederverwendet — so entsteht eine echte, selbst beobachtete Linien-
  * historie, ohne Werte zu erfinden. Public-%/Sharp-% erfordern kommerzielle
  * Datenfeeds (z. B. Action Network) und bleiben bewusst leer.
+ *
+ * Version 6.0 (Paket 4): zusätzlich wird bei jedem Abruf ein echter,
+ * zeitgestempelter Linien-Snapshot dauerhaft gespeichert
+ * (`recordLineSnapshot`) und daraus die vollständige Market Intelligence
+ * berechnet (`computeMarketIntelligence`).
  */
 export async function fetchMarketSnapshot(homeTeamName: string, awayTeamName: string): Promise<MarketSnapshot | null> {
   const emptySnapshot: MarketSnapshot = {
@@ -29,6 +46,7 @@ export async function fetchMarketSnapshot(homeTeamName: string, awayTeamName: st
     bookmakerCount: 0,
     publicOverPct: null,
     sharpOverPct: null,
+    marketIntelligence: null,
   };
 
   // `fetchOddsForMatchup()` wirft bewusst, wenn kein passendes Spiel bei
@@ -58,6 +76,25 @@ export async function fetchMarketSnapshot(homeTeamName: string, awayTeamName: st
   const bestOddsOver = Math.max(...odds.map((o) => o.oddsOver));
   const bestOddsUnder = Math.max(...odds.map((o) => o.oddsUnder));
 
+  // Version 6.0 (Paket 4): echten, zeitgestempelten Snapshot dauerhaft
+  // anhängen (Basis für Bewegungsgeschwindigkeit/Steam-Move-Erkennung),
+  // dann die vollständige Market Intelligence aus der aktualisierten
+  // Historie und den aktuell gleichzeitig abgefragten Buchmachern
+  // berechnen.
+  const history = recordLineSnapshot(matchupKey, {
+    timestamp: Date.now(),
+    line: currentLine,
+    oddsOver: odds[0].oddsOver,
+    oddsUnder: odds[0].oddsUnder,
+    bookmakerCount: odds.length,
+  });
+
+  const marketIntelligence = computeMarketIntelligence({
+    currentSnapshots: odds,
+    history,
+    openingLine,
+  });
+
   return {
     openingLine,
     currentLine,
@@ -66,5 +103,6 @@ export async function fetchMarketSnapshot(homeTeamName: string, awayTeamName: st
     bookmakerCount: odds.length,
     publicOverPct: null,
     sharpOverPct: null,
+    marketIntelligence,
   };
 }

@@ -300,6 +300,17 @@ export interface MarketInput {
   closingLine: string;
   publicOverPct: string;
   sharpOverPct: string;
+  /**
+   * Version 6.0 (Paket 4): destillierter 0–100-Score aus der Market
+   * Intelligence Engine (siehe `@/engine/marketIntelligenceEngine`).
+   * Das vollständige, reichhaltige Ergebnis (Line Movement, Sharp/RLM/
+   * Steam-Erkennung, CLV etc.) fließt NICHT direkt in `AnalyzerState`,
+   * sondern bleibt — analog zu `ExtendedMetrics` — als eigenständiges
+   * Objekt neben dem State bestehen und wird separat an das Dashboard
+   * durchgereicht. Nur dieser distillierte Score beeinflusst über die
+   * dynamische Gewichtung tatsächlich die Prognose.
+   */
+  marketScore: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -818,6 +829,41 @@ export interface BacktestDatasetRecord {
 
   /** Einfluss ALLER 8 Module auf diese Prognose (nicht nur die Top 5 wie in `PredictionSummary`). */
   moduleInfluences: ModuleInfluence[];
+
+  /**
+   * Version 6.0 (Paket 4): Market-Intelligence-Felder. Bulk-Backtests
+   * laden aktuell keine echten Multi-Buchmacher-/Linien-Historien-Daten
+   * je historischem Spiel (dieselbe bereits dokumentierte Einschränkung
+   * wie beim Closing-Line-Value in Backtesting PRO, Paket 7 — historische
+   * Odds erfordern einen kostenpflichtigen Datenfeed pro Abruf). Diese
+   * Felder sind daher bei Bulk-Backtests konsequent `null`/`false` statt
+   * erfunden — die Berechnungslogik ist vollständig vorhanden und
+   * korrekt, sobald echte historische Marktdaten verfügbar sind (z. B.
+   * über einen zukünftigen, gezielten historischen Odds-Import).
+   */
+  marketOpeningLine: number | null;
+  marketClosingLine: number | null;
+  marketScore: number | null;
+  sharpMovementDetected: boolean;
+  reverseLineMovementDetected: boolean;
+  steamMoveDetected: boolean;
+  clv: number | null;
+}
+
+/** Auswertung einer Gruppe von Spielen mit ähnlichem Market Score (Version 6.0, Paket 4, Schritt 9). */
+export interface MarketQualityBucketPerformance {
+  label: string;
+  minScore: number;
+  maxScore: number;
+  bets: number;
+  wins: number;
+  losses: number;
+  pushes: number;
+  decidedBets: number;
+  hitRate: number;
+  roi: number;
+  yield: number;
+  profit: number;
 }
 
 /** Auswertung einer Gruppe von Spielen mit derselben (gerundeten) Wettlinie. */
@@ -1260,5 +1306,72 @@ export interface PredictionIntelligenceProResult {
   conflictAnalysis: ConflictAnalysis;
   signalStrength: SignalStrengthAssessment;
   extremeCases: ExtremeCaseFlag[];
+  notes: string[];
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 4 — Market Intelligence Engine
+// ---------------------------------------------------------------------------
+
+export type LineMovementDirection = "over" | "under" | "stable";
+export type MarketMovementSpeed = "keine Bewegung" | "langsam" | "moderat" | "schnell";
+
+/** Ein einzelner, real beobachteter Linien-Snapshot (dauerhaft gespeichert, siehe `odds.ts`). */
+export interface LineHistorySnapshot {
+  timestamp: number;
+  line: number;
+  oddsOver: number;
+  oddsUnder: number;
+  bookmakerCount: number;
+}
+
+export type ClvOutcome = "positive" | "negative" | "push" | "unbekannt";
+
+/** Closing Line Value (Schritt 5): Vergleich der eigenen/beobachteten Linie mit der später beobachteten Closing Line. */
+export interface ClosingLineValueResult {
+  openingLine: number | null;
+  currentLine: number | null;
+  closingLine: number | null;
+  /** In Linienpunkten, in Richtung des Picks (positiv = Line-Value gewonnen). `null` ohne Pick oder ohne Closing Line. */
+  clv: number | null;
+  clvPct: number | null;
+  outcome: ClvOutcome;
+}
+
+/**
+ * Vollständiges Ergebnis der Market Intelligence Engine (Version 6.0,
+ * Paket 4). Alle Werte werden ausschließlich aus real beobachteten Daten
+ * berechnet: der eigenen, dauerhaft gespeicherten Opening-Line/Linien-
+ * Historie (`odds.ts`) sowie den aktuell von mehreren Buchmachern
+ * gleichzeitig gelieferten Quoten (`OddsSnapshot[]`). Sharp Money/
+ * Reverse Line Movement/Steam Move sind — mangels verfügbarer Public-
+ * Betting-Prozentsätze (kostenpflichtiger Datenfeed) — begründete
+ * Heuristiken auf Basis von Linienbewegung, -geschwindigkeit und
+ * Buchmacher-Konsens, nicht auf Basis echter Einsatzverteilungen.
+ */
+export interface MarketIntelligenceResult {
+  openingLine: number | null;
+  currentLine: number | null;
+  closingLine: number | null;
+  lineMovement: number | null;
+  lineMovementPct: number | null;
+  movementDirection: LineMovementDirection;
+  /** 0–100. */
+  movementStrength: number;
+  movementSpeed: MarketMovementSpeed;
+  movementSpeedPerHour: number | null;
+  sharpMovementDetected: boolean;
+  publicMovementDetected: boolean;
+  reverseLineMovementDetected: boolean;
+  steamMoveDetected: boolean;
+  lateSharpAction: boolean;
+  /** 0–100: wie einig sich die aktuell abgefragten Buchmacher bei der Linie sind. */
+  marketConsensusPct: number;
+  /** 0–100: Streuung der Linie über die Zeit sowie über Buchmacher hinweg. */
+  marketVolatility: number;
+  bookmakerCount: number;
+  historyLength: number;
+  /** 0–100, siehe Schritt 3 — fließt optional in die dynamische Gewichtung ein. */
+  marketScore: number;
+  clv: ClosingLineValueResult;
   notes: string[];
 }

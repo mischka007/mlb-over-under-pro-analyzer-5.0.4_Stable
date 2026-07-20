@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, RotateCcw, Save } from "lucide-react";
-import type { AnalyzerState, ExtendedMetrics } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, MarketIntelligenceResult } from "@/types";
 import type { AvailabilityFlags } from "@/hooks/useGameAutoLoad";
 import { useAnalyzerState } from "@/hooks/useAnalyzerState";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -14,6 +14,7 @@ import { DataAvailabilityBanner } from "@/components/dashboard/DataAvailabilityB
 import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPanel";
 import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
 import { SystemStatusPanel } from "@/components/dashboard/SystemStatusPanel";
+import { MarketIntelligencePanel } from "@/components/dashboard/MarketIntelligencePanel";
 import { TeamFormModule } from "@/components/modules/TeamFormModule";
 import { PitcherModule } from "@/components/modules/PitcherModule";
 import { BullpenModule } from "@/components/modules/BullpenModule";
@@ -49,11 +50,13 @@ export function Dashboard({
   initialState,
   availability,
   extendedMetrics,
+  marketIntelligence,
   onBack,
 }: {
   initialState?: AnalyzerState | null;
   availability?: AvailabilityFlags | null;
   extendedMetrics?: ExtendedMetrics | null;
+  marketIntelligence?: MarketIntelligenceResult | null;
   onBack?: () => void;
 } = {}) {
   const { state, updateSetup, updateTeam, updateWeather, updateBallpark, updateH2H, updateMarket, resetAll, replaceState } = useAnalyzerState();
@@ -244,6 +247,9 @@ export function Dashboard({
 
         {/* Release Dashboard: Systemstatus, Data Quality, Smart Warnings, API Health (Tag 9) */}
         <SystemStatusPanel state={state} analysis={analysis} availability={availability ?? null} computationDurationMs={computationDurationMs} />
+
+        {/* Market Intelligence (Version 6.0, Paket 4) */}
+        <MarketIntelligencePanel data={marketIntelligence} />
 
         {/* Weitere Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { MotionConfig } from "framer-motion";
-import type { AnalyzerState, ExtendedMetrics, GameCardSummary, HistoryEntry } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, GameCardSummary, HistoryEntry, MarketIntelligenceResult } from "@/types";
 import { Dashboard } from "@/pages/Dashboard";
 import { TodaysGamesPage } from "@/pages/TodaysGamesPage";
 import { AnalyzeAllPage, type RankedGameResult } from "@/pages/AnalyzeAllPage";
@@ -36,11 +36,12 @@ export default function App() {
   const [view, setView] = useState<View>("today");
 
   const { games, isLoading: gamesLoading, error: gamesError, reload } = useTodaysGames();
-  const { loadGame, steps, isLoading: analysisLoading, availability, extended } = useGameAutoLoad();
+  const { loadGame, steps, isLoading: analysisLoading, availability, extended, marketIntelligence } = useGameAutoLoad();
 
   const [loadedState, setLoadedState] = useState<AnalyzerState | null>(null);
   const [loadedAvailability, setLoadedAvailability] = useState<AvailabilityFlags | null>(null);
   const [loadedExtended, setLoadedExtended] = useState<ExtendedMetrics | null>(null);
+  const [loadedMarketIntelligence, setLoadedMarketIntelligence] = useState<MarketIntelligenceResult | null>(null);
 
   const [rankedResults, setRankedResults] = useState<RankedGameResult[]>([]);
   const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
@@ -55,9 +56,10 @@ export default function App() {
       setLoadedState(state);
       setLoadedAvailability(availability);
       setLoadedExtended(extended);
+      setLoadedMarketIntelligence(marketIntelligence);
       setView("analysis");
     },
-    [loadGame, availability, extended]
+    [loadGame, availability, extended, marketIntelligence]
   );
 
   const handleAnalyzeAll = useCallback(async () => {
@@ -145,6 +147,7 @@ export default function App() {
           initialState={loadedState ?? createEmptyAnalyzerState()}
           availability={loadedAvailability}
           extendedMetrics={loadedExtended}
+          marketIntelligence={loadedMarketIntelligence}
           onBack={() => setView("today")}
         />
       )}

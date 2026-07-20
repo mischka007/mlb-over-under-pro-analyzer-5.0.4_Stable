@@ -288,6 +288,7 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     ballparkRunFactor: toNumber(state.ballpark.runFactor),
     marketOpeningLine: toNumber(state.market.openingLine),
     marketCurrentLine: toNumber(state.market.currentLine),
+    marketScore: toNumber(state.market.marketScore),
   };
 
   const { modules: dynamicModules, adjustments: weightingAdjustments } = applyDynamicWeighting(modules, weightingContext);

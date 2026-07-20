@@ -3,6 +3,7 @@ import { evaluateBacktestGame } from "./backtestEngine";
 import type { BacktestDatasetRecord, ModuleInfluence } from "@/types";
 import type { BacktestGame } from "./backtestTypes";
 import type { HistoricalBacktestState } from "./historicalBacktestState";
+import { toNumber } from "@/utils/math";
 
 /**
  * Backtesting PRO Phase 3: Dataset Builder.
@@ -94,6 +95,17 @@ function buildRecordForGame(state: HistoricalBacktestState["state"], game: Backt
     hit,
     profitLoss,
     moduleInfluences,
+
+    // Version 6.0 (Paket 4): siehe Typ-Dokumentation — bei Bulk-Backtests
+    // ist `state.market` unbefüllt (keine historischen Multi-Buchmacher-
+    // Daten verfügbar), daher konsequent `null`/`false` statt erfunden.
+    marketOpeningLine: toNumber(state.market.openingLine),
+    marketClosingLine: toNumber(state.market.closingLine),
+    marketScore: toNumber(state.market.marketScore),
+    sharpMovementDetected: false,
+    reverseLineMovementDetected: false,
+    steamMoveDetected: false,
+    clv: null,
   };
 }
 

@@ -52,6 +52,13 @@ const CSV_COLUMNS: { header: string; get: (r: BacktestDatasetRecord) => string |
   { header: "Tatsächliche Runs", get: (r) => r.actualRuns },
   { header: "Treffer", get: (r) => (r.hit === null ? "–" : r.hit ? "Ja" : "Nein") },
   { header: "Gewinn/Verlust", get: (r) => r.profitLoss.toFixed(3) },
+  { header: "Market Opening Line", get: (r) => (r.marketOpeningLine !== null ? r.marketOpeningLine.toFixed(1) : "–") },
+  { header: "Market Closing Line", get: (r) => (r.marketClosingLine !== null ? r.marketClosingLine.toFixed(1) : "–") },
+  { header: "Market Score", get: (r) => (r.marketScore !== null ? r.marketScore.toFixed(0) : "–") },
+  { header: "Sharp Movement", get: (r) => (r.sharpMovementDetected ? "Ja" : "Nein") },
+  { header: "Reverse Line Movement", get: (r) => (r.reverseLineMovementDetected ? "Ja" : "Nein") },
+  { header: "Steam Move", get: (r) => (r.steamMoveDetected ? "Ja" : "Nein") },
+  { header: "CLV", get: (r) => (r.clv !== null ? r.clv.toFixed(2) : "–") },
 ];
 
 /**

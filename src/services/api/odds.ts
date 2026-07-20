@@ -1,3 +1,4 @@
+import type { LineHistorySnapshot } from "@/types";
 import { cached } from "@/services/cache/cache";
 import { getOddsApiKey } from "@/services/api/apiKeys";
 import { normalizeTeamName, teamNamesMatch } from "@/services/api/teamNameMatching";
@@ -113,5 +114,48 @@ export function recordAndGetOpeningLine(matchupKey: string, currentLine: number)
     return currentLine;
   } catch {
     return currentLine;
+  }
+}
+
+/**
+ * Version 6.0 (Paket 4): vollständige, dauerhaft gespeicherte Linien-
+ * Historie je Matchup (nicht nur die erste Beobachtung wie bei
+ * `recordAndGetOpeningLine`). Grundlage für die Market Intelligence
+ * Engine (Bewegungsgeschwindigkeit, Steam-Move-Erkennung, Closing Line).
+ * Jeder tatsächliche Odds-Abruf hängt einen echten, zeitgestempelten
+ * Snapshot an — keine erfundenen Zwischenwerte. Auf eine Obergrenze pro
+ * Matchup begrenzt, damit der localStorage nicht unbegrenzt wächst.
+ */
+const LINE_HISTORY_PREFIX = "mlb-analyzer-line-history:";
+const MAX_LINE_HISTORY_ENTRIES = 60;
+
+export function recordLineSnapshot(matchupKey: string, snapshot: LineHistorySnapshot): LineHistorySnapshot[] {
+  try {
+    const history = getLineHistory(matchupKey);
+    const last = history[history.length - 1];
+
+    // Keine Duplikate anhängen, wenn sich seit dem letzten gespeicherten
+    // Snapshot nichts geändert hat (spart Speicher, verzerrt die
+    // Geschwindigkeitsberechnung nicht mit künstlichen Zeitpunkten).
+    if (last && last.line === snapshot.line && last.bookmakerCount === snapshot.bookmakerCount) {
+      return history;
+    }
+
+    const updated = [...history, snapshot].slice(-MAX_LINE_HISTORY_ENTRIES);
+    window.localStorage.setItem(LINE_HISTORY_PREFIX + matchupKey, JSON.stringify(updated));
+    return updated;
+  } catch {
+    return getLineHistory(matchupKey);
+  }
+}
+
+export function getLineHistory(matchupKey: string): LineHistorySnapshot[] {
+  try {
+    const raw = window.localStorage.getItem(LINE_HISTORY_PREFIX + matchupKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as LineHistorySnapshot[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
   }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnalyzerState, ExtendedMetrics, GameCardSummary, LoadingStep } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, GameCardSummary, LoadingStep, MarketIntelligenceResult } from "@/types";
 import { createEmptyAnalyzerState } from "@/hooks/useAnalyzerState";
 import { fetchTeamOffenseStats, fetchTeamForm, findTeamByName } from "@/services/api/teams";
 import { fetchPitcherSeasonStats } from "@/services/api/pitchers";
@@ -54,6 +54,7 @@ export function useGameAutoLoad() {
   const [error, setError] = useState<string | null>(null);
   const [availability, setAvailability] = useState<AvailabilityFlags>(emptyAvailability());
   const [extended, setExtended] = useState<ExtendedMetrics | null>(null);
+  const [marketIntelligence, setMarketIntelligence] = useState<MarketIntelligenceResult | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -231,6 +232,14 @@ export function useGameAutoLoad() {
         if (market.bestOddsOver != null) state.setup.oddsOver = String(market.bestOddsOver);
         if (market.bestOddsUnder != null) state.setup.oddsUnder = String(market.bestOddsUnder);
         flags.market = market.currentLine != null;
+
+        // Version 6.0 (Paket 4): destillierten Market Score in den
+        // State übernehmen (fließt über die dynamische Gewichtung in
+        // die Prognose ein), vollständiges Market-Intelligence-Ergebnis
+        // separat für das Dashboard vorhalten (siehe `ExtendedMetrics`-
+        // Muster).
+        state.market.marketScore = market.marketIntelligence ? String(market.marketIntelligence.marketScore) : "";
+        if (isMountedRef.current) setMarketIntelligence(market.marketIntelligence);
       }
 
       if (lineups) flags.lineups = true;
@@ -269,7 +278,7 @@ export function useGameAutoLoad() {
     }
   }, []);
 
-  return { loadGame, steps, isLoading, error, availability, extended };
+  return { loadGame, steps, isLoading, error, availability, extended, marketIntelligence };
 }
 
 function applyPitcherStats(target: AnalyzerState["home"]["pitcher"], stats: NonNullable<Awaited<ReturnType<typeof fetchPitcherSeasonStats>>>): void {
