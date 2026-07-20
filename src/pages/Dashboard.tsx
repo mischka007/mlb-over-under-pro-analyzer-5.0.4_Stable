@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, RotateCcw, Save } from "lucide-react";
-import type { AnalyzerState, ExtendedMetrics, MarketIntelligenceResult } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, GameCardSummary, GameInfo, LineupQualityScore, MarketIntelligenceResult } from "@/types";
 import type { AvailabilityFlags } from "@/hooks/useGameAutoLoad";
 import { useAnalyzerState } from "@/hooks/useAnalyzerState";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
@@ -15,6 +15,10 @@ import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPane
 import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
 import { SystemStatusPanel } from "@/components/dashboard/SystemStatusPanel";
 import { MarketIntelligencePanel } from "@/components/dashboard/MarketIntelligencePanel";
+import { LiveMonitoringPanel } from "@/components/dashboard/LiveMonitoringPanel";
+import { buildDataQualityReport } from "@/engine/dataQualityEngine";
+import { useLiveMonitoring } from "@/hooks/useLiveMonitoring";
+import { GameInfoPanel } from "@/components/dashboard/GameInfoPanel";
 import { TeamFormModule } from "@/components/modules/TeamFormModule";
 import { PitcherModule } from "@/components/modules/PitcherModule";
 import { BullpenModule } from "@/components/modules/BullpenModule";
@@ -51,12 +55,18 @@ export function Dashboard({
   availability,
   extendedMetrics,
   marketIntelligence,
+  gameInfo,
+  lineupQuality,
+  game,
   onBack,
 }: {
   initialState?: AnalyzerState | null;
   availability?: AvailabilityFlags | null;
   extendedMetrics?: ExtendedMetrics | null;
   marketIntelligence?: MarketIntelligenceResult | null;
+  gameInfo?: GameInfo | null;
+  lineupQuality?: LineupQualityScore | null;
+  game?: GameCardSummary | null;
   onBack?: () => void;
 } = {}) {
   const { state, updateSetup, updateTeam, updateWeather, updateBallpark, updateH2H, updateMarket, resetAll, replaceState } = useAnalyzerState();
@@ -90,6 +100,36 @@ export function Dashboard({
     return { analysis: result, computationDurationMs: performance.now() - start };
   }, [debouncedState]);
   const quality = useMemo(() => assessQuality(analysis.consensus, analysis.premiumFilter), [analysis]);
+
+  // Version 6.0 (Paket 7D): EINZIGE, kanonische Data-Quality-Berechnung
+  // für diese Analyse — wird sowohl von Live Monitoring (Paket 7A) als
+  // auch vom System-Status-Panel (Tag 9/Paket 5) genutzt. Vorher wurde
+  // `buildDataQualityReport()` bei jedem Render zweimal aufgerufen
+  // (einmal hier, einmal erneut intern in `SystemStatusPanel.tsx`) —
+  // im Rahmen des Paket-7D-Performance-Reviews behoben.
+  const gameInfoComplete = gameInfo
+    ? gameInfo.venueName !== "" && gameInfo.localTimeLabel !== "" && gameInfo.seasonPhaseLabel !== "Unbekannt"
+    : undefined;
+  const dataQuality = useMemo(
+    () =>
+      buildDataQualityReport(
+        state,
+        analysis,
+        availability?.lineups,
+        lineupQuality?.score ?? null,
+        marketIntelligence?.marketScore ?? (marketIntelligence === null ? null : undefined),
+        gameInfoComplete
+      ),
+    [state, analysis, availability, lineupQuality, marketIntelligence, gameInfoComplete]
+  );
+  const liveMonitoring = useLiveMonitoring({
+    game: game ?? null,
+    dataQualityScore: dataQuality.overallScore,
+    predictionPick: analysis.consensus.pick,
+    confidencePct: analysis.consensus.confidence * 100,
+    onWeatherChange: updateWeather,
+    onMarketChange: updateMarket,
+  });
   const line = toNumber(state.setup.line) ?? 8.5;
 
   // Überschreibt die vorläufigen Werte aus dem Auto-Load (Pitcher-/Bullpen-/
@@ -175,6 +215,9 @@ export function Dashboard({
         {availability && <DataAvailabilityBanner availability={availability} />}
 
         {/* Dashboard-Kopf: Spiel-Setup */}
+        {/* Spielinformationen (Version 6.0, Paket 5) — oberhalb der Analyse */}
+        <GameInfoPanel data={gameInfo} />
+
         <GameSetupBar setup={state.setup} onChange={updateSetup} accent={accent} />
 
         {/* Hauptkarte: Premium Prediction */}
@@ -246,10 +289,19 @@ export function Dashboard({
         <DecisionSupportPanel analysis={analysis} accent={accent} />
 
         {/* Release Dashboard: Systemstatus, Data Quality, Smart Warnings, API Health (Tag 9) */}
-        <SystemStatusPanel state={state} analysis={analysis} availability={availability ?? null} computationDurationMs={computationDurationMs} />
+        <SystemStatusPanel
+          state={state}
+          analysis={analysis}
+          availability={availability ?? null}
+          computationDurationMs={computationDurationMs}
+          dataQuality={dataQuality}
+        />
 
         {/* Market Intelligence (Version 6.0, Paket 4) */}
         <MarketIntelligencePanel data={marketIntelligence} />
+
+        {/* Live Monitoring (Version 6.0, Paket 7A) */}
+        <LiveMonitoringPanel monitoring={liveMonitoring} predictionPick={analysis.consensus.pick} confidencePct={analysis.consensus.confidence * 100} />
 
         {/* Weitere Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -269,7 +321,16 @@ export function Dashboard({
 
         {/* Export & Einstellungen */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <ExportPanel state={state} consensus={analysis.consensus} poisson={analysis.poisson} dashboardRef={dashboardRef} />
+          <ExportPanel
+            state={state}
+            consensus={analysis.consensus}
+            poisson={analysis.poisson}
+            dashboardRef={dashboardRef}
+            gameInfo={gameInfo}
+            marketIntelligence={marketIntelligence}
+            lineupQuality={lineupQuality}
+            changeHistory={liveMonitoring.changeHistory}
+          />
           <SettingsPanel
             theme={theme}
             onThemeChange={setTheme}

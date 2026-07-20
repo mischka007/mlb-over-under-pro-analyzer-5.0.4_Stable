@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { RefObject } from "react";
-import { Download, FileImage, FileSpreadsheet, FileText } from "lucide-react";
-import type { AnalyzerState, ConsensusResult, PoissonResult } from "@/types";
+import { Download, FileImage, FileSpreadsheet, FileText, History } from "lucide-react";
+import type { AnalyzerState, ConsensusResult, GameInfo, LineupQualityScore, MarketIntelligenceResult, PoissonResult, SmartAlert } from "@/types";
 import { Card, SectionHeader } from "@/components/common/UI";
-import { exportAnalysisAsCsv } from "@/utils/csv";
+import { exportAnalysisAsCsv, exportChangeHistoryAsCsv } from "@/utils/csv";
 import { isoDateStamp } from "@/utils/format";
 
 /**
@@ -17,16 +17,29 @@ export function ExportPanel({
   consensus,
   poisson,
   dashboardRef,
+  gameInfo,
+  marketIntelligence,
+  lineupQuality,
+  changeHistory,
 }: {
   state: AnalyzerState;
   consensus: ConsensusResult;
   poisson: PoissonResult;
   dashboardRef: RefObject<HTMLDivElement | null>;
+  gameInfo?: GameInfo | null;
+  marketIntelligence?: MarketIntelligenceResult | null;
+  lineupQuality?: LineupQualityScore | null;
+  /** Version 6.0 (Paket 7B): Live-Monitoring-Change-History, sofern vorhanden. */
+  changeHistory?: SmartAlert[];
 }) {
   const [isExporting, setIsExporting] = useState<"png" | "pdf" | null>(null);
 
   const handleCsvExport = () => {
-    exportAnalysisAsCsv(state, consensus, poisson);
+    exportAnalysisAsCsv(state, consensus, poisson, gameInfo, marketIntelligence, lineupQuality);
+  };
+
+  const handleChangeHistoryExport = () => {
+    if (changeHistory) exportChangeHistoryAsCsv(changeHistory);
   };
 
   const handlePngExport = async () => {
@@ -65,6 +78,9 @@ export function ExportPanel({
       <SectionHeader icon={Download} title="Export" accent="gold" />
       <div className="flex flex-wrap gap-2">
         <ExportButton icon={FileSpreadsheet} label="CSV exportieren" onClick={handleCsvExport} />
+        {changeHistory && changeHistory.length > 0 && (
+          <ExportButton icon={History} label={`Change History (${changeHistory.length})`} onClick={handleChangeHistoryExport} />
+        )}
         <ExportButton icon={FileImage} label="Als PNG" onClick={handlePngExport} loading={isExporting === "png"} />
         <ExportButton icon={FileText} label="Als PDF" onClick={handlePdfExport} loading={isExporting === "pdf"} />
       </div>

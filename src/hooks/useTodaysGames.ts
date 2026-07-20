@@ -69,6 +69,14 @@ export function useTodaysGames() {
             line: best?.line ?? null,
             oddsOver: best?.oddsOver ?? null,
             oddsUnder: best?.oddsUnder ?? null,
+            officialDate: g.officialDate,
+            venueId: g.venueId,
+            abstractGameState: g.abstractGameState,
+            isDoubleheader: g.isDoubleheader,
+            doubleheaderGameNumber: g.doubleheaderGameNumber,
+            gameType: g.gameType,
+            seriesGameNumber: g.seriesGameNumber,
+            gamesInSeries: g.gamesInSeries,
           };
           return summary;
         })

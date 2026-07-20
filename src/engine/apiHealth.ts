@@ -1,21 +1,19 @@
 import type { ApiHealthReport, ApiSourceHealth, ApiSourceStatus, DataQualityReport } from "@/types";
+import { getRequestMetric } from "@/services/cache/cache";
 
 /**
- * Tag 9 — API Health.
+ * Tag 9 — API Health. Erweitert in Version 6.0 (Paket 5), Schritt 8:
+ * `responseTimeMs`/`errorRatePct`/`lastUpdated` stammen jetzt aus der
+ * echten, zentral in `cached()` erfassten Instrumentierung (siehe
+ * `@/services/cache/cache`, `getRequestMetric()`) — nicht mehr `null`.
+ * Bleiben `null`, solange für diese Quelle in der aktuellen Session noch
+ * kein echter Netzwerkaufruf stattgefunden hat (z. B. Ballpark: rein
+ * statische Referenztabelle ohne Netzwerkzugriff, siehe `ballpark.ts`).
  *
- * Bewertet den Status je Datenquelle. `status`/`completenessPct` beruhen
- * auf echten, bereits vorhandenen Signalen: dem tatsächlichen Lade-
- * Status (`AvailabilityFlags` aus `useGameAutoLoad`) sowie der bereits
- * berechneten Feld-Vollständigkeit (`DataQualityReport`, Schritt 3,
- * unverändert wiederverwendet statt neu berechnet).
- *
- * `responseTimeMs`/`errorRatePct`/`lastUpdated` sind bewusst `null`: das
- * Projekt hat aktuell keine Instrumentierung, die reale Antwortzeiten
- * oder Fehlerraten je Request aufzeichnet (das nachzurüsten würde jeden
- * bestehenden Fetch-Aufruf in allen `services/api/*`-Dateien verändern
- * — eine Architekturänderung, die diese Aufgabe ausdrücklich
- * ausschließt). Erfundene Werte würden gegen das Transparenz-Gebot
- * verstoßen, daher konsequent `null` statt einer Zahl.
+ * `status`/`completenessPct` bewerten weiterhin auf Basis des
+ * tatsächlichen Lade-Status (`AvailabilityFlags`) sowie der bereits
+ * berechneten Feld-Vollständigkeit (`DataQualityReport`, unverändert
+ * wiederverwendet).
  */
 
 export interface ApiHealthAvailability {
@@ -45,6 +43,25 @@ function findAreaScore(dataQuality: DataQualityReport, area: string): number {
 }
 
 /**
+ * Liest die echte Instrumentierung für einen Cache-Key-Präfix aus
+ * (`null`, wenn in dieser Session noch kein Aufruf stattfand — kein
+ * erfundener Wert).
+ */
+function realMetricsFor(cacheKeyPrefix: string | null): { responseTimeMs: number | null; errorRatePct: number | null; lastUpdated: string | null } {
+  if (cacheKeyPrefix === null) return { responseTimeMs: null, errorRatePct: null, lastUpdated: null };
+
+  const metric = getRequestMetric(cacheKeyPrefix);
+  if (!metric) return { responseTimeMs: null, errorRatePct: null, lastUpdated: null };
+
+  const totalCalls = metric.successCount + metric.errorCount;
+  return {
+    responseTimeMs: Math.round(metric.lastResponseTimeMs),
+    errorRatePct: totalCalls > 0 ? Math.round((metric.errorCount / totalCalls) * 1000) / 10 : null,
+    lastUpdated: new Date(metric.lastCallTimestamp).toISOString(),
+  };
+}
+
+/**
  * Baut den vollständigen API-Health-Report auf. `availability` ist
  * optional (aus `useGameAutoLoad`s `AvailabilityFlags`) — fehlt sie
  * (z. B. bei einer aus dem Verlauf geladenen Analyse ohne Live-Ladezyklus),
@@ -68,9 +85,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(pitcherScore / 10),
       fieldsExpected: 10,
       completenessPct: pitcherScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("pitcher-stats"),
     },
     {
       source: "Bullpen",
@@ -78,9 +93,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(bullpenScore / 10),
       fieldsExpected: 10,
       completenessPct: bullpenScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("bullpen-stats"),
     },
     {
       source: "Offense",
@@ -88,9 +101,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(offenseScore / 10),
       fieldsExpected: 10,
       completenessPct: offenseScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("team-offense"),
     },
     {
       source: "Team Form",
@@ -98,9 +109,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: 0,
       fieldsExpected: 0,
       completenessPct: availability ? (availability.homeForm && availability.awayForm ? 100 : 0) : 0,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("recent-games"),
     },
     {
       source: "Weather",
@@ -108,9 +117,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(weatherScore / 10),
       fieldsExpected: 10,
       completenessPct: weatherScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("weather"),
     },
     {
       source: "Ballpark",
@@ -118,9 +125,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(ballparkScore / 10),
       fieldsExpected: 10,
       completenessPct: ballparkScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor(null),
     },
     {
       source: "Head-to-Head",
@@ -128,9 +133,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(h2hScore / 10),
       fieldsExpected: 10,
       completenessPct: h2hScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("h2h"),
     },
     {
       source: "Market",
@@ -138,9 +141,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: Math.round(marketScore / 10),
       fieldsExpected: 10,
       completenessPct: marketScore,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("odds"),
     },
   ];
 
@@ -152,9 +153,7 @@ export function buildApiHealthReport(dataQuality: DataQualityReport, availabilit
       fieldsLoaded: completeness > 0 ? 1 : 0,
       fieldsExpected: 1,
       completenessPct: completeness,
-      responseTimeMs: null,
-      errorRatePct: null,
-      lastUpdated: null,
+      ...realMetricsFor("lineups"),
     });
   }
 

@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AnalyzerState, ExtendedMetrics, GameCardSummary, LoadingStep, MarketIntelligenceResult } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, GameCardSummary, GameInfo, LineupQualityScore, LoadingStep, MarketIntelligenceResult } from "@/types";
+import { buildGameInfo } from "@/engine/gameInfoEngine";
+import { computeLineupQualityScore } from "@/engine/lineupQualityEngine";
 import { createEmptyAnalyzerState } from "@/hooks/useAnalyzerState";
 import { fetchTeamOffenseStats, fetchTeamForm, findTeamByName } from "@/services/api/teams";
 import { fetchPitcherSeasonStats } from "@/services/api/pitchers";
@@ -55,6 +57,8 @@ export function useGameAutoLoad() {
   const [availability, setAvailability] = useState<AvailabilityFlags>(emptyAvailability());
   const [extended, setExtended] = useState<ExtendedMetrics | null>(null);
   const [marketIntelligence, setMarketIntelligence] = useState<MarketIntelligenceResult | null>(null);
+  const [gameInfo, setGameInfo] = useState<GameInfo | null>(null);
+  const [lineupQuality, setLineupQuality] = useState<LineupQualityScore | null>(null);
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -82,6 +86,10 @@ export function useGameAutoLoad() {
     state.setup.oddsOver = game.oddsOver != null ? String(game.oddsOver) : "";
     state.setup.oddsUnder = game.oddsUnder != null ? String(game.oddsUnder) : "";
     markDone(0);
+
+    // Version 6.0 (Paket 5): Spielinformationen sind bereits aus den
+    // Schedule-Daten bekannt — keine zusätzliche API nötig.
+    setGameInfo(buildGameInfo(game));
 
     try {
       // Performance PRO: Wetter, Markt und Lineups hängen von keinem der
@@ -242,7 +250,23 @@ export function useGameAutoLoad() {
         if (isMountedRef.current) setMarketIntelligence(market.marketIntelligence);
       }
 
-      if (lineups) flags.lineups = true;
+      let lineupQualityResult: LineupQualityScore | null = null;
+      if (lineups) {
+        flags.lineups = true;
+        // Version 6.0 (Paket 5), Punkt 2: echter Lineup Quality Score aus
+        // real geladenen Daten (Batting-Order-Vollständigkeit,
+        // Positionsabdeckung, Starter-Bestätigung, Aktualität) — ersetzt
+        // das bisher immer `null`e `lineupStrengthScore` vollständig.
+        lineupQualityResult = computeLineupQualityScore({
+          homeLineup: lineups.home,
+          awayLineup: lineups.away,
+          homePitcherConfirmed: game.homeProbablePitcherId !== null,
+          awayPitcherConfirmed: game.awayProbablePitcherId !== null,
+          fetchedAt: lineups.fetchedAt,
+        });
+        state.setup.lineupQualityScore = String(lineupQualityResult.score);
+        if (isMountedRef.current) setLineupQuality(lineupQualityResult);
+      }
 
       // Rest/Reise (best-effort, aus echten Spielplandaten)
       const [homeRest, awayRest] = await Promise.all([
@@ -256,7 +280,7 @@ export function useGameAutoLoad() {
           pitcherMatchupScore: 50, // Initialwert, wird unmittelbar im Dashboard durch den echten Pitcher-Modul-Score überschrieben
           bullpenMatchupScore: 50, // Initialwert, wird unmittelbar im Dashboard durch den echten Bullpen-Modul-Score überschrieben
           offenseMatchupScore: 50, // Initialwert, wird unmittelbar im Dashboard durch den echten Offense-Modul-Score überschrieben
-          lineupStrengthScore: null,
+          lineupStrengthScore: lineupQualityResult?.score ?? null,
           momentumScore: 50, // Initialwert, wird unmittelbar im Dashboard durch den echten Form-Modul-Score überschrieben
           recentFormScore: 50, // Initialwert, wird unmittelbar im Dashboard durch den echten Form-Modul-Score überschrieben
           travelFatigueNote: awayRest?.traveledSinceLastGame ? `${game.awayTeamName} ist seit dem letzten Spiel umgezogen (${awayRest.lastVenueName ?? "unbekannt"} → ${game.venueName})` : null,
@@ -278,7 +302,7 @@ export function useGameAutoLoad() {
     }
   }, []);
 
-  return { loadGame, steps, isLoading, error, availability, extended, marketIntelligence };
+  return { loadGame, steps, isLoading, error, availability, extended, marketIntelligence, gameInfo, lineupQuality };
 }
 
 function applyPitcherStats(target: AnalyzerState["home"]["pitcher"], stats: NonNullable<Awaited<ReturnType<typeof fetchPitcherSeasonStats>>>): void {

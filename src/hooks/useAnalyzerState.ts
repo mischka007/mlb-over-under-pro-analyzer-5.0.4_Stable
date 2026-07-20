@@ -160,6 +160,7 @@ const emptySetup = (): GameSetup => ({
   lineupsConfirmed: false,
   pitcherConfirmed: false,
   weatherConfirmed: false,
+  lineupQualityScore: "",
   noInjuryConcerns: true,
 });
 

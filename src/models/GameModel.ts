@@ -441,6 +441,8 @@ export function computeFullAnalysis(state: AnalyzerState, calibrationMultipliers
     enhancedScore: predictionEngine2.enhancedScore,
     linearScore: consensus.finalScore,
     dataQualityPct: advancedPrediction.predictionSummary.dataQualityPct,
+    nonLinearConfidence: predictionEngine2.nonLinearConfidence,
+    lineupQualityScore: toNumber(state.setup.lineupQualityScore),
   });
 
   return {

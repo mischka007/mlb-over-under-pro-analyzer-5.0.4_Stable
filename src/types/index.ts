@@ -329,6 +329,15 @@ export interface GameSetup {
   pitcherConfirmed: boolean;
   weatherConfirmed: boolean;
   /**
+   * Version 6.0 (Paket 5): destillierter 0–100-Score aus der Lineup
+   * Quality Engine (siehe `@/engine/lineupQualityEngine`). Analog zu
+   * `MarketInput.marketScore` — das vollständige, reichhaltige Ergebnis
+   * bleibt als eigenständiges Objekt neben dem State bestehen, nur
+   * dieser distillierte Wert beeinflusst über die dynamische Gewichtung
+   * tatsächlich die Prognose.
+   */
+  lineupQualityScore: string;
+  /**
    * Prediction Engine PRO: Ob keine Verletzungssorgen bei Schlüsselspielern
    * (Starting Pitcher, Kern-Lineup) bekannt sind. `true` = keine bekannten
    * Probleme (Standardwert, keine Auswirkung). `false` = eine bekannte
@@ -514,6 +523,19 @@ export interface GameCardSummary {
   line: number | null;
   oddsOver: number | null;
   oddsUnder: number | null;
+  /**
+   * Version 6.0 (Paket 5): zusätzliche, bereits von der MLB Stats API
+   * gelieferte Felder für die automatische Spielinformationen-Anzeige
+   * (siehe `@/engine/gameInfoEngine`).
+   */
+  officialDate: string;
+  venueId: number | null;
+  abstractGameState: string | null;
+  isDoubleheader: boolean;
+  doubleheaderGameNumber: number | null;
+  gameType: string | null;
+  seriesGameNumber: number | null;
+  gamesInSeries: number | null;
 }
 
 export type QualityGrade = "A+" | "A" | "A-" | "B+" | "B" | "C" | "D";
@@ -1306,6 +1328,14 @@ export interface PredictionIntelligenceProResult {
   conflictAnalysis: ConflictAnalysis;
   signalStrength: SignalStrengthAssessment;
   extremeCases: ExtremeCaseFlag[];
+  /**
+   * Version 6.0 (Paket 5), Punkt 4: die nicht-lineare Confidence aus
+   * Prediction Engine 2.0 (`PredictionEngine2Result.nonLinearConfidence`,
+   * unverändert als Basis übernommen), zusätzlich um Data-Quality-/
+   * Lineup-Quality-Score gedämpft — NIEMALS künstlich verstärkt, nur bei
+   * niedriger Datenqualität reduziert (Faktor 0.85–1.0).
+   */
+  qualityAdjustedConfidence: number;
   notes: string[];
 }
 // ---------------------------------------------------------------------------
@@ -1374,4 +1404,253 @@ export interface MarketIntelligenceResult {
   marketScore: number;
   clv: ClosingLineValueResult;
   notes: string[];
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 5 — Spielinformationen
+// ---------------------------------------------------------------------------
+
+export type NormalizedGameStatus =
+  | "Vor Spielbeginn"
+  | "Live"
+  | "Beendet"
+  | "Verschoben"
+  | "Doubleheader Spiel 1"
+  | "Doubleheader Spiel 2"
+  | "Unbekannt";
+
+/**
+ * Automatisch aus der MLB Stats API abgeleitete Spielinformationen
+ * (Version 6.0, Paket 5). Ausschließlich aus bereits geladenen, echten
+ * Feldern berechnet (Datum/Uhrzeit-Formatierung, Zeitzonen-Umrechnung,
+ * Status-Normalisierung) — keine zusätzliche API, keine erfundenen
+ * Werte.
+ */
+export interface GameInfo {
+  gameId: number;
+  homeTeamName: string;
+  awayTeamName: string;
+  dateLabel: string;
+  weekdayLabel: string;
+  localTimeLabel: string;
+  germanTimeLabel: string;
+  status: NormalizedGameStatus;
+  venueName: string;
+  venueId: number | null;
+  doubleheaderGameNumber: number | null;
+  seriesGameNumber: number | null;
+  gamesInSeries: number | null;
+  seasonPhaseLabel: string;
+  /** Version 6.0 (Paket 6), Schritt 8: echter Zeitpunkt (`Date.now()`), zu dem diese Spielinformationen geladen wurden — Basis für "Zeit seit letzter Aktualisierung". */
+  loadedAt: number;
+  /** Version 6.0 (Paket 6), Schritt 8: exakter Spielbeginn als Unix-Timestamp (ms) — Basis für den Countdown. `null`, falls `gameDate` nicht parsbar war. */
+  gameStartTimestamp: number | null;
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 5 — Lineup Quality Score
+// ---------------------------------------------------------------------------
+
+/**
+ * Echter Lineup Quality Score (Version 6.0, Paket 5) — ersetzt das
+ * bisher immer `null`e `ExtendedMetrics.lineupStrengthScore`
+ * vollständig. Ausschließlich aus real geladenen Daten berechnet
+ * (Batting-Order-Vollständigkeit, Positionsabdeckung, Starter-
+ * Bestätigung, Aktualität des Abrufs). "Verletzte Spieler"/"fehlende
+ * Stammspieler" fließen bewusst NICHT ein — dafür gibt es im Projekt
+ * keine Verletzungs-/Roster-Historien-Datenquelle; das als Score-Dimension
+ * zu erfinden würde gegen das Transparenz-Gebot verstoßen.
+ */
+export interface LineupQualityScore {
+  score: number;
+  label: DataQualityLabel;
+  battingOrderCompleteness: number;
+  positionCoverage: number;
+  pitcherConfirmed: boolean;
+  bothLineupsAvailable: boolean;
+  ageMinutes: number | null;
+  notes: string[];
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 6 — Prediction Quality Engine
+// ---------------------------------------------------------------------------
+
+/** Ein Rolling-Metrik-Punkt (gleitendes Fenster über die chronologisch sortierten Backtest-Ergebnisse). */
+export interface RollingMetricPoint {
+  index: number;
+  date: string;
+  rollingAccuracy: number;
+  rollingRoi: number;
+  rollingYield: number;
+  /** Mittlerer absoluter Abstand zwischen gemeldeter Confidence und tatsächlichem Treffer (0=perfekt kalibriert) im Fenster. */
+  rollingConfidenceGap: number;
+  /** Proxy für Datenvollständigkeit: Anteil der 8 Module mit echten Daten, gemittelt über das Fenster. */
+  rollingDataCompleteness: number;
+}
+
+export type PredictionDriftDirection = "verbessert" | "verschlechtert" | "stabil";
+
+/**
+ * Vollständiger Prediction-Quality-Report (Version 6.0, Paket 6).
+ * Baut bewusst auf den bereits bestehenden Tag-7-Berechnungen auf
+ * (`ModelQualitySummary`, `ConfidenceCalibrationPoint[]`,
+ * `ModuleBacktestPerformance[]`) statt sie neu zu implementieren — nur
+ * Drift, Stabilität, Konsistenz, aggregierter Kalibrierungsfehler,
+ * Trust Score und Rolling-Metriken sind echte Neuentwicklungen.
+ */
+export interface PredictionQualityReport {
+  modelQuality: ModelQualitySummary;
+  predictionAccuracy: number;
+  predictionError: number;
+  /** Mittlerer absoluter Confidence-Kalibrierungs-Fehler in Prozentpunkten, aus `ConfidenceCalibrationPoint[]` aggregiert. */
+  confidenceError: number;
+  /** Stichproben-gewichteter Expected Calibration Error (ECE) in Prozentpunkten. */
+  calibrationError: number;
+  predictionDrift: number;
+  driftDirection: PredictionDriftDirection;
+  predictionStability: number;
+  predictionConsistency: number;
+  predictionReliability: number;
+  confidenceAccuracy: number;
+  trustScore: number;
+  trustGrade: QualityGrade;
+  rollingMetrics: RollingMetricPoint[];
+  sampleSize: number;
+  notes: string[];
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 7A — Live Monitoring Core (Infrastruktur, noch ohne Alerts/Historie)
+// ---------------------------------------------------------------------------
+
+/**
+ * Ein Schnappschuss der überwachten Werte zu einem Zeitpunkt.
+ * Ausschließlich aus bereits vorhandenen Datenquellen befüllt.
+ */
+export interface LiveMonitoringSnapshot {
+  timestamp: number;
+  homeProbablePitcherId: number | null;
+  awayProbablePitcherId: number | null;
+  lineupsConfirmed: boolean;
+  weatherTemperatureC: number | null;
+  weatherWindSpeedMph: number | null;
+  weatherWindDegrees: number | null;
+  currentLine: number | null;
+  marketScore: number | null;
+  gameStatus: NormalizedGameStatus;
+  dataQualityScore: number;
+  /** Version 6.0 (Paket 7B): aus `MarketIntelligenceResult` (Paket 4, unverändert wiederverwendet). */
+  steamMoveDetected: boolean;
+  reverseLineMovementDetected: boolean;
+  /** Version 6.0 (Paket 7B): aktueller Pick/Confidence zum Zeitpunkt des Checks, vom Aufrufer übergeben (bereits von `computeFullAnalysis()` berechnet). */
+  predictionPick: "over" | "under" | null;
+  confidencePct: number | null;
+}
+
+export type LiveMonitoringCategory =
+  | "pitcher"
+  | "lineups"
+  | "weather"
+  | "odds"
+  | "status"
+  | "dataQuality"
+  | "steamMove"
+  | "reverseLineMovement"
+  | "prediction"
+  | "confidence"
+  | "marketScoreValue";
+
+/** Ergebnis des Vergleichs zweier Snapshots — reine Erkennung, noch keine Alert-/Historien-Objekte (kommt in Paket 7B). */
+export interface LiveMonitoringChangeFlags {
+  pitcherChanged: boolean;
+  lineupsChanged: boolean;
+  weatherChanged: boolean;
+  oddsChanged: boolean;
+  statusChanged: boolean;
+  dataQualityChanged: boolean;
+  /** Version 6.0 (Paket 7B) */
+  steamMoveChanged: boolean;
+  reverseLineMovementChanged: boolean;
+  predictionChanged: boolean;
+  confidenceChanged: boolean;
+  marketScoreChanged: boolean;
+  changedCategories: LiveMonitoringCategory[];
+  hasAnyChange: boolean;
+}
+
+/** Status einer einzelnen überwachten API-Quelle — nutzt denselben Status-Wertebereich wie `ApiSourceHealth` (Tag 9/Paket 5), keine Dopplung. */
+export interface LiveMonitoringApiStatus {
+  source: string;
+  status: ApiSourceStatus;
+  lastCheckedAt: number | null;
+}
+
+/** Öffentlicher Zustand der Live Monitoring Engine, wie er im Dashboard angezeigt wird (Schritt 5). */
+export interface LiveMonitoringState {
+  isActive: boolean;
+  lastCheckedAt: number | null;
+  nextCheckAt: number | null;
+  checkIntervalMs: number;
+  apiStatus: LiveMonitoringApiStatus[];
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 7B — Smart Alerts & Change History
+// ---------------------------------------------------------------------------
+
+export type AlertCategory =
+  | "pitcher"
+  | "lineup"
+  | "weather"
+  | "odds"
+  | "steamMove"
+  | "reverseLineMovement"
+  | "prediction"
+  | "confidence"
+  | "marketScore"
+  | "dataQuality";
+
+export type AlertSeverity = "niedrig" | "mittel" | "hoch" | "kritisch";
+
+/**
+ * Eine einzelne, real erkannte Änderung (Version 6.0, Paket 7B). Baut
+ * auf `LiveMonitoringSnapshot`/`detectChangeFlags` aus Paket 7A auf —
+ * keine neue Erkennungslogik, nur die Umsetzung einer erkannten
+ * Änderung in ein dokumentiertes, chronologisch gespeichertes Ereignis.
+ */
+export interface SmartAlert {
+  id: string;
+  timestamp: number;
+  category: AlertCategory;
+  description: string;
+  oldValue: string;
+  newValue: string;
+  impact: string;
+  severity: AlertSeverity;
+  /**
+   * Version 6.0 (Paket 7C): "Alert Confidence" — wie deutlich die
+   * erkannte Änderung über der Erkennungsschwelle liegt (0–100). Bei
+   * binären Änderungen (Pitcher/Prediction gewechselt, Steam Move
+   * erkannt etc.) immer 100 — eindeutig, kein Schwellenwert-Ermessen.
+   */
+  confidencePct: number;
+}
+// ---------------------------------------------------------------------------
+// Version 6.0 Paket 7C — Live Re-Analysis Qualitätskennzahlen
+// ---------------------------------------------------------------------------
+
+/**
+ * Live-Kontext-Qualitätskennzahlen (Version 6.0, Paket 7C). Bewusst
+ * NICHT identisch mit `PredictionQualityReport` (Paket 6, aus
+ * historischen Backtests): dort wird die Modellqualität über viele
+ * vergangene Spiele bewertet, hier die Verlässlichkeit der AKTUELLEN
+ * Live-Überwachung eines einzelnen, laufenden Spiels.
+ */
+export interface LiveQualityMetrics {
+  /** 0–100: je weniger Änderungen relativ zu den durchgeführten Checks, desto stabiler. */
+  liveStability: number;
+  /** 0–100: Vertrauen in den aktuellen Live-Stand, aus API-Gesundheit und Aktualität der letzten Prüfung. */
+  updateConfidence: number;
+  /** 0–100: Komposit aus Live Stability, Update Confidence und Häufigkeit kritischer Alerts. */
+  livePredictionReliability: number;
+  /** 0–100: Mittelwert der `SmartAlert.confidencePct` aller bisher erkannten Änderungen. */
+  averageAlertConfidence: number;
+  checksPerformed: number;
+  changesDetectedCount: number;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { MotionConfig } from "framer-motion";
-import type { AnalyzerState, ExtendedMetrics, GameCardSummary, HistoryEntry, MarketIntelligenceResult } from "@/types";
+import type { AnalyzerState, ExtendedMetrics, GameCardSummary, GameInfo, HistoryEntry, LineupQualityScore, MarketIntelligenceResult } from "@/types";
 import { Dashboard } from "@/pages/Dashboard";
 import { TodaysGamesPage } from "@/pages/TodaysGamesPage";
 import { AnalyzeAllPage, type RankedGameResult } from "@/pages/AnalyzeAllPage";
@@ -36,12 +36,15 @@ export default function App() {
   const [view, setView] = useState<View>("today");
 
   const { games, isLoading: gamesLoading, error: gamesError, reload } = useTodaysGames();
-  const { loadGame, steps, isLoading: analysisLoading, availability, extended, marketIntelligence } = useGameAutoLoad();
+  const { loadGame, steps, isLoading: analysisLoading, availability, extended, marketIntelligence, gameInfo, lineupQuality } = useGameAutoLoad();
 
   const [loadedState, setLoadedState] = useState<AnalyzerState | null>(null);
   const [loadedAvailability, setLoadedAvailability] = useState<AvailabilityFlags | null>(null);
   const [loadedExtended, setLoadedExtended] = useState<ExtendedMetrics | null>(null);
   const [loadedMarketIntelligence, setLoadedMarketIntelligence] = useState<MarketIntelligenceResult | null>(null);
+  const [loadedGameInfo, setLoadedGameInfo] = useState<GameInfo | null>(null);
+  const [loadedLineupQuality, setLoadedLineupQuality] = useState<LineupQualityScore | null>(null);
+  const [loadedGame, setLoadedGame] = useState<GameCardSummary | null>(null);
 
   const [rankedResults, setRankedResults] = useState<RankedGameResult[]>([]);
   const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
@@ -57,9 +60,12 @@ export default function App() {
       setLoadedAvailability(availability);
       setLoadedExtended(extended);
       setLoadedMarketIntelligence(marketIntelligence);
+      setLoadedGameInfo(gameInfo);
+      setLoadedLineupQuality(lineupQuality);
+      setLoadedGame(game);
       setView("analysis");
     },
-    [loadGame, availability, extended, marketIntelligence]
+    [loadGame, availability, extended, marketIntelligence, gameInfo, lineupQuality]
   );
 
   const handleAnalyzeAll = useCallback(async () => {
@@ -148,6 +154,9 @@ export default function App() {
           availability={loadedAvailability}
           extendedMetrics={loadedExtended}
           marketIntelligence={loadedMarketIntelligence}
+          gameInfo={loadedGameInfo}
+          lineupQuality={loadedLineupQuality}
+          game={loadedGame}
           onBack={() => setView("today")}
         />
       )}

@@ -1,4 +1,4 @@
-import type { BacktestDatasetRecord } from "@/types";
+import type { BacktestDatasetRecord, PredictionQualityReport } from "@/types";
 import { isoDateStamp } from "@/utils/format";
 
 /**
@@ -80,4 +80,46 @@ export function exportBacktestDatasetAsCsv(records: BacktestDatasetRecord[]): vo
 export function exportBacktestDatasetAsJson(records: BacktestDatasetRecord[]): void {
   const jsonContent = JSON.stringify(records, null, 2);
   triggerDownload(jsonContent, "application/json;charset=utf-8;", `mlb-backtest-${isoDateStamp()}.json`);
+}
+
+/**
+ * Version 6.0 (Paket 6), Schritt 9: exportiert den aggregierten
+ * Prediction-Quality-Report (Trust Score, Drift, Stabilität,
+ * Konsistenz, Kalibrierungsfehler, Rolling-Metriken) als CSV-Datei.
+ * Eigene Funktion statt Erweiterung von `CSV_COLUMNS`, da es sich um
+ * EINEN Aggregatwert über alle Spiele handelt, nicht um eine Zeile pro
+ * Spiel.
+ */
+export function exportPredictionQualityAsCsv(quality: PredictionQualityReport): void {
+  const rows: (string | number)[][] = [
+    ["Kennzahl", "Wert"],
+    ["Trust Score", quality.trustScore.toFixed(1)],
+    ["Trust Grade", quality.trustGrade],
+    ["Prediction Accuracy (%)", quality.predictionAccuracy.toFixed(1)],
+    ["Prediction Error (%)", quality.predictionError.toFixed(1)],
+    ["Confidence Error (pp)", quality.confidenceError.toFixed(1)],
+    ["Calibration Error / ECE (pp)", quality.calibrationError.toFixed(1)],
+    ["Prediction Drift (pp)", quality.predictionDrift.toFixed(1)],
+    ["Drift-Richtung", quality.driftDirection],
+    ["Prediction Stability", quality.predictionStability.toFixed(1)],
+    ["Prediction Consistency", quality.predictionConsistency.toFixed(1)],
+    ["Prediction Reliability", quality.predictionReliability.toFixed(1)],
+    ["Confidence Accuracy", quality.confidenceAccuracy.toFixed(1)],
+    ["Stichprobengröße (entschiedene Spiele)", quality.sampleSize],
+    ["Modellqualität (Gesamt, Tag 7)", quality.modelQuality.overallScore.toFixed(1)],
+    ["Modellqualität Grade", quality.modelQuality.grade],
+    [""],
+    ["Rolling-Metriken", ""],
+    ["Datum", "Rolling Accuracy (%)", "Rolling ROI (%)", "Rolling Confidence Gap (pp)", "Rolling Datenvollständigkeit (%)"],
+    ...quality.rollingMetrics.map((p) => [
+      p.date,
+      p.rollingAccuracy.toFixed(1),
+      p.rollingRoi.toFixed(1),
+      p.rollingConfidenceGap.toFixed(1),
+      p.rollingDataCompleteness.toFixed(1),
+    ]),
+  ];
+
+  const csvContent = rows.map((row) => row.map(csvEscape).join(",")).join("\n");
+  triggerDownload(`\uFEFF${csvContent}`, "text/csv;charset=utf-8;", `mlb-prediction-quality-${isoDateStamp()}.csv`);
 }

@@ -43,7 +43,54 @@ function writeToStorage<T>(key: string, entry: CacheEntry<T>): void {
   }
 }
 
-/** Liefert einen gecachten Wert, falls vorhanden und noch nicht abgelaufen. */
+/**
+ * Version 6.0 (Paket 5), Schritt 8: echte API-Antwortzeit-/Erfolgs-
+ * Instrumentierung. Wird zentral in `cached()` erfasst (dem bereits
+ * bestehenden, einzigen Chokepoint, den alle `services/api/*.ts`-Module
+ * für echte Netzwerkaufrufe nutzen) — schließt die in Tag 9 bewusst
+ * offen gelassene Lücke ("keine Instrumentierung vorhanden"), ohne
+ * jedes einzelne Service-Modul anfassen zu müssen. Nur echte
+ * Netzwerkaufrufe (Cache-Treffer laufen NICHT durch diesen Pfad) werden
+ * gemessen — keine erfundenen Werte.
+ */
+export interface ApiRequestMetric {
+  lastCallTimestamp: number;
+  lastResponseTimeMs: number;
+  lastSuccess: boolean;
+  lastErrorMessage: string | null;
+  successCount: number;
+  errorCount: number;
+}
+
+const requestMetrics = new Map<string, ApiRequestMetric>();
+
+/** Extrahiert den Cache-Key-Präfix (vor dem ersten `:`) als groben Herkunfts-Bucket. */
+function keyPrefix(key: string): string {
+  const idx = key.indexOf(":");
+  return idx >= 0 ? key.slice(0, idx) : key;
+}
+
+function recordRequestMetric(prefix: string, result: { success: boolean; responseTimeMs: number; errorMessage?: string }): void {
+  const existing = requestMetrics.get(prefix);
+  requestMetrics.set(prefix, {
+    lastCallTimestamp: Date.now(),
+    lastResponseTimeMs: result.responseTimeMs,
+    lastSuccess: result.success,
+    lastErrorMessage: result.success ? null : (result.errorMessage ?? "Unbekannter Fehler"),
+    successCount: (existing?.successCount ?? 0) + (result.success ? 1 : 0),
+    errorCount: (existing?.errorCount ?? 0) + (result.success ? 0 : 1),
+  });
+}
+
+/** Liefert die aktuellen Metriken für einen einzelnen Cache-Key-Präfix (z. B. `"odds"`, `"weather"`). */
+export function getRequestMetric(prefix: string): ApiRequestMetric | null {
+  return requestMetrics.get(prefix) ?? null;
+}
+
+/** Liefert alle bisher erfassten Präfixe mit ihren Metriken (für die API-Health-Übersicht). */
+export function getAllRequestMetrics(): Map<string, ApiRequestMetric> {
+  return new Map(requestMetrics);
+}
 export function getCached<T>(key: string): T | null {
   const mem = memoryCache.get(key) as CacheEntry<T> | undefined;
   if (mem && mem.expiresAt > Date.now()) return mem.value;
@@ -80,10 +127,20 @@ export async function cached<T>(key: string, fetcher: () => Promise<T>, ttlMs?: 
   if (pending) return pending;
 
   const promise = (async () => {
+    const prefix = keyPrefix(key);
+    const start = performance.now();
     try {
       const value = await fetcher();
+      recordRequestMetric(prefix, { success: true, responseTimeMs: performance.now() - start });
       setCached(key, value, ttlMs);
       return value;
+    } catch (err) {
+      recordRequestMetric(prefix, {
+        success: false,
+        responseTimeMs: performance.now() - start,
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
     } finally {
       inFlightRequests.delete(key);
     }

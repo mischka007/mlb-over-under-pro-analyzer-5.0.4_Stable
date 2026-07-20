@@ -47,6 +47,15 @@ export interface ScheduledGame {
 
   status: string;
 
+  /**
+   * Version 6.0 (Paket 5): normalisierter MLB-Status
+   * ("Preview"/"Live"/"Final" etc.) — präziser als der freitextige
+   * `status` (`detailedState`) für die automatische Statusklassifikation
+   * (siehe `@/engine/gameInfoEngine`). `null`, falls die API dieses Feld
+   * (in seltenen Fällen) nicht liefert.
+   */
+  abstractGameState: string | null;
+
   venueName: string;
   venueId: number | null;
 
@@ -66,6 +75,14 @@ export interface ScheduledGame {
   awayProbablePitcherName: string | null;
 
   isDoubleheader: boolean;
+  /** Version 6.0 (Paket 5): welches Spiel eines Doubleheaders (1 oder 2). `null` außerhalb eines Doubleheaders bzw. falls die API es nicht liefert. */
+  doubleheaderGameNumber: number | null;
+  /** Version 6.0 (Paket 5): MLB-Saisonphase-Code ("R" = Regular Season, "P" = Playoffs, "S" = Spring Training, "A" = All-Star etc.). `null`, falls nicht geliefert. */
+  gameType: string | null;
+  /** Version 6.0 (Paket 5): Spielnummer innerhalb der aktuellen Serie. `null`, falls nicht geliefert. */
+  seriesGameNumber: number | null;
+  /** Version 6.0 (Paket 5): Gesamtzahl der Spiele in der aktuellen Serie. `null`, falls nicht geliefert. */
+  gamesInSeries: number | null;
 }
 
 /**
@@ -87,9 +104,15 @@ interface MlbScheduleResponse {
 
       status: {
         detailedState: string;
+        abstractGameState?: string;
       };
 
       doubleHeader: string;
+      /** Version 6.0 (Paket 5): welches Spiel eines Doubleheaders (MLB liefert dies i. d. R. als String "1"/"2"/"y"). */
+      gameNumber?: number;
+      gameType?: string;
+      seriesGameNumber?: number;
+      gamesInSeries?: number;
 
       venue?: {
         id: number;
@@ -149,6 +172,9 @@ function mapGame(
     status:
       raw.status.detailedState,
 
+    abstractGameState:
+      raw.status.abstractGameState ?? null,
+
     venueName:
       raw.venue?.name ?? "",
 
@@ -191,6 +217,18 @@ function mapGame(
 
     isDoubleheader:
       raw.doubleHeader !== "N",
+
+    doubleheaderGameNumber:
+      raw.gameNumber ?? null,
+
+    gameType:
+      raw.gameType ?? null,
+
+    seriesGameNumber:
+      raw.seriesGameNumber ?? null,
+
+    gamesInSeries:
+      raw.gamesInSeries ?? null,
   };
 }
 

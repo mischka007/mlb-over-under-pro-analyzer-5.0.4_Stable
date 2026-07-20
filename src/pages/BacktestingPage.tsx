@@ -21,8 +21,10 @@ import { BacktestManager } from "@/backtesting/backtestManager";
 import { buildBacktestDataset } from "@/backtesting/backtestingDatasetBuilder";
 import { buildBacktestingDashboardData, type BacktestingDashboardData } from "@/backtesting/backtestingDashboardAnalytics";
 import { buildModelOptimizationData, type ModelOptimizationData } from "@/backtesting/modelOptimizationAnalytics";
+import { buildPredictionQualityReport } from "@/backtesting/predictionQualityEngine";
+import type { PredictionQualityReport } from "@/types";
 import { runHistoricalCalibration } from "@/backtesting/historicalCalibration";
-import { exportBacktestDatasetAsCsv, exportBacktestDatasetAsJson } from "@/utils/backtestExport";
+import { exportBacktestDatasetAsCsv, exportBacktestDatasetAsJson, exportPredictionQualityAsCsv } from "@/utils/backtestExport";
 import { exportElementAsPdf } from "@/utils/pdfExport";
 import { formatSigned } from "@/utils/format";
 
@@ -85,6 +87,7 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<BacktestingDashboardData | null>(null);
   const [modelOptimization, setModelOptimization] = useState<ModelOptimizationData | null>(null);
+  const [predictionQuality, setPredictionQuality] = useState<PredictionQualityReport | null>(null);
   const [loadedGameCount, setLoadedGameCount] = useState(0);
 
   const [isExportingPdf, setIsExportingPdf] = useState(false);
@@ -136,6 +139,18 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
         calibration: calibrationResult,
       });
       setModelOptimization(optimizationData);
+
+      // Version 6.0 (Paket 6): Prediction Quality Engine — nutzt die
+      // bereits oben berechneten `optimizationData.modelQuality`/
+      // `.confidenceCalibration` (Tag 7, unverändert) als Eingaben,
+      // berechnet nur die tatsächlich neuen Kennzahlen (Drift,
+      // Stabilität, Konsistenz, Trust Score, Rolling-Metriken).
+      const predictionQualityReport = buildPredictionQualityReport({
+        records,
+        modelQuality: optimizationData.modelQuality,
+        confidenceCalibration: optimizationData.confidenceCalibration,
+      });
+      setPredictionQuality(predictionQualityReport);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unbekannter Fehler beim Backtest.");
     } finally {
@@ -242,6 +257,19 @@ export function BacktestingPage({ onBack }: { onBack: () => void }) {
           <WeightingAnalysisTable optimization={modelOptimization} />
         </div>
       )}
+
+      {predictionQuality && (
+        <div className="space-y-4">
+          <div className="flex justify-end">
+            <ExportButton
+              icon={FileSpreadsheet}
+              label="Prediction Quality CSV"
+              onClick={() => exportPredictionQualityAsCsv(predictionQuality)}
+            />
+          </div>
+          <PredictionQualityPanel quality={predictionQuality} />
+        </div>
+      )}
     </div>
   );
 }
@@ -272,6 +300,105 @@ function ModelQualityPanel({ optimization }: { optimization: ModelOptimizationDa
         </div>
       </div>
     </Card>
+  );
+}
+
+/**
+ * Version 6.0 (Paket 6): Prediction Quality Panel — Trust Score, Drift,
+ * Stabilität, Konsistenz, Zuverlässigkeit sowie Rolling-Accuracy-Chart.
+ * Rein darstellend, keine eigene Berechnung (siehe
+ * `@/backtesting/predictionQualityEngine`).
+ */
+function PredictionQualityPanel({ quality }: { quality: PredictionQualityReport }) {
+  const toneForScore = (score: number): "green" | "gold" | "red" => (score >= 70 ? "green" : score >= 50 ? "gold" : "red");
+
+  const rollingChartData = quality.rollingMetrics.map((p) => ({
+    date: p.date,
+    Genauigkeit: Math.round(p.rollingAccuracy * 10) / 10,
+    "ROI %": Math.round(p.rollingRoi * 10) / 10,
+  }));
+
+  return (
+    <div className="space-y-4">
+      <Card accent="teal">
+        <SectionHeader icon={TrendingUp} title="Prediction Quality & Trust Score" accent="teal" />
+        <div className="flex items-center gap-3 mb-4">
+          <span className="font-numeric text-4xl leading-none text-slate-100">{quality.trustScore.toFixed(0)}</span>
+          <Badge tone={toneForScore(quality.trustScore)}>{quality.trustGrade}</Badge>
+          <span className="font-mono text-[10px] text-slate-500">
+            {quality.sampleSize} entschiedene Spiele
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Accuracy</div>
+            <div className="font-numeric text-xl text-slate-100">{quality.predictionAccuracy.toFixed(1)}%</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Stabilität</div>
+            <div className="font-numeric text-xl text-slate-100">{quality.predictionStability.toFixed(0)}</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Konsistenz</div>
+            <div className="font-numeric text-xl text-slate-100">{quality.predictionConsistency.toFixed(0)}</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Verlässlichkeit</div>
+            <div className="font-numeric text-xl text-slate-100">{quality.predictionReliability.toFixed(0)}</div>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-2">
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Confidence Error</div>
+            <div className="font-numeric text-lg text-slate-100">{quality.confidenceError.toFixed(1)} pp</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Calibration Error (ECE)</div>
+            <div className="font-numeric text-lg text-slate-100">{quality.calibrationError.toFixed(1)} pp</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Confidence Accuracy</div>
+            <div className="font-numeric text-lg text-slate-100">{quality.confidenceAccuracy.toFixed(0)}</div>
+          </div>
+          <div>
+            <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500">Prediction Drift</div>
+            <div className={`font-numeric text-lg ${quality.predictionDrift >= 0 ? "text-posgreen-400" : "text-negred-400"}`}>
+              {formatSigned(quality.predictionDrift)} pp
+            </div>
+            <div className="font-mono text-[9px] text-slate-500">{quality.driftDirection}</div>
+          </div>
+        </div>
+        <details className="group mt-2">
+          <summary className="cursor-pointer font-mono text-[9px] uppercase tracking-wider text-slate-500 hover:text-slate-300 transition-colors">
+            Details anzeigen
+          </summary>
+          <ul className="mt-2 space-y-1">
+            {quality.notes.map((note) => (
+              <li key={note} className="font-mono text-[10px] text-slate-500">
+                {note}
+              </li>
+            ))}
+          </ul>
+        </details>
+      </Card>
+
+      {rollingChartData.length > 0 && (
+        <Card accent="teal">
+          <SectionHeader icon={TrendingUp} title={`Rolling Accuracy & ROI (Fenster: 20 Spiele)`} accent="teal" />
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={rollingChartData}>
+              <CartesianGrid stroke={CHART_COLORS.gridLine} strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="date" tick={{ fill: CHART_COLORS.text, fontSize: 10 }} />
+              <YAxis tick={{ fill: CHART_COLORS.text, fontSize: 10 }} />
+              <Tooltip {...tooltipStyle} />
+              <Legend wrapperStyle={{ fontSize: 11, color: CHART_COLORS.text }} />
+              <Line type="monotone" dataKey="Genauigkeit" stroke={CHART_COLORS.gold} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="ROI %" stroke={CHART_COLORS.teal} strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </Card>
+      )}
+    </div>
   );
 }
 

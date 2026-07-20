@@ -1,10 +1,9 @@
 import { useMemo } from "react";
 import { Activity, AlertTriangle, Database, Gauge, HardDrive, ShieldCheck } from "lucide-react";
-import type { AnalyzerState } from "@/types";
+import type { AnalyzerState, DataQualityReport } from "@/types";
 import type { FullAnalysis } from "@/models/GameModel";
 import type { AvailabilityFlags } from "@/hooks/useGameAutoLoad";
 import { Badge, Card, SectionHeader } from "@/components/common/UI";
-import { buildDataQualityReport } from "@/engine/dataQualityEngine";
 import { buildSmartWarnings } from "@/engine/smartWarnings";
 import { buildApiHealthReport } from "@/engine/apiHealth";
 import { getCacheStats } from "@/services/cache/cache";
@@ -47,16 +46,20 @@ export function SystemStatusPanel({
   analysis,
   availability,
   computationDurationMs,
+  dataQuality,
 }: {
   state: AnalyzerState;
   analysis: FullAnalysis;
   availability: AvailabilityFlags | null;
   computationDurationMs: number;
+  /**
+   * Version 6.0 (Paket 7D): wird jetzt vom Aufrufer übergeben
+   * (`Dashboard.tsx` berechnet ihn bereits für Live Monitoring, Paket
+   * 7A) statt intern ein zweites Mal berechnet zu werden — behebt eine
+   * echte doppelte Berechnung bei jedem Render.
+   */
+  dataQuality: DataQualityReport;
 }) {
-  const dataQuality = useMemo(
-    () => buildDataQualityReport(state, analysis, availability?.lineups),
-    [state, analysis, availability]
-  );
   const warnings = useMemo(() => buildSmartWarnings(state, analysis, dataQuality), [state, analysis, dataQuality]);
   const apiHealth = useMemo(() => buildApiHealthReport(dataQuality, availability ?? undefined), [dataQuality, availability]);
   const cacheStatus = useMemo(() => getCacheStats(), [analysis]);

@@ -1,6 +1,7 @@
 import { Activity, ArrowDownRight, ArrowUpRight, Gauge, Minus, TrendingUp, Zap } from "lucide-react";
 import type { MarketIntelligenceResult } from "@/types";
 import { Badge, Card, SectionHeader } from "@/components/common/UI";
+import { formatSigned } from "@/utils/format";
 
 /**
  * Version 6.0 (Paket 4): Market Intelligence Panel.
@@ -56,8 +57,8 @@ export function MarketIntelligencePanel({ data }: { data: MarketIntelligenceResu
       <div className="flex items-center gap-2 mb-4 rounded-md border border-base-600 bg-base-800/50 px-3 py-2.5">
         <DirectionIcon size={16} className={directionColor} />
         <span className="font-mono text-xs text-slate-200">
-          Line Movement: {data.lineMovement !== null ? `${data.lineMovement >= 0 ? "+" : ""}${data.lineMovement.toFixed(2)}` : "–"}
-          {data.lineMovementPct !== null && ` (${data.lineMovementPct >= 0 ? "+" : ""}${data.lineMovementPct.toFixed(1)}%)`}
+          Line Movement: {data.lineMovement !== null ? formatSigned(data.lineMovement, 2) : "–"}
+          {data.lineMovementPct !== null && ` (${formatSigned(data.lineMovementPct)}%)`}
         </span>
         <span className="ml-auto font-mono text-[10px] text-slate-500">
           Stärke {data.movementStrength.toFixed(0)}/100 · {data.movementSpeed}
@@ -100,7 +101,7 @@ export function MarketIntelligencePanel({ data }: { data: MarketIntelligenceResu
                 data.clv.outcome === "positive" ? "text-posgreen-400" : data.clv.outcome === "negative" ? "text-negred-400" : "text-slate-300"
               }`}
             >
-              {data.clv.clv !== null ? `${data.clv.clv >= 0 ? "+" : ""}${data.clv.clv.toFixed(2)}` : "–"}
+              {data.clv.clv !== null ? formatSigned(data.clv.clv, 2) : "–"}
             </span>
             <Badge tone={data.clv.outcome === "positive" ? "green" : data.clv.outcome === "negative" ? "red" : "neutral"}>{data.clv.outcome}</Badge>
           </div>

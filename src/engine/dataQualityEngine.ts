@@ -92,7 +92,21 @@ function assessBallparkQuality(state: AnalyzerState): DataQualityAreaAssessment 
  * wird es nicht übergeben, bleibt der Lineups-Bereich ausgelassen statt
  * einen Wert zu erfinden.
  */
-export function buildDataQualityReport(state: AnalyzerState, analysis: FullAnalysis, lineupsAvailable?: boolean): DataQualityReport {
+/**
+ * Version 6.0 (Paket 5), Punkt 3: `lineupQualityScore` (der echte,
+ * nuancierte Score aus `@/engine/lineupQualityEngine`, sofern
+ * verfügbar) ersetzt die bisher rein binäre `lineupsAvailable`-Prüfung
+ * mit einer präziseren Bewertung. `marketIntelligenceScore` und
+ * `gameInfoComplete` sind neue, eigenständige Bereiche.
+ */
+export function buildDataQualityReport(
+  state: AnalyzerState,
+  analysis: FullAnalysis,
+  lineupsAvailable?: boolean,
+  lineupQualityScore?: number | null,
+  marketIntelligenceScore?: number | null,
+  gameInfoComplete?: boolean
+): DataQualityReport {
   const factors = analysis.advancedPrediction.confidenceBreakdown.factors;
   const findFactor = (key: string) => factors.find((f) => f.key === key);
 
@@ -106,7 +120,15 @@ export function buildDataQualityReport(state: AnalyzerState, analysis: FullAnaly
     assessBallparkQuality(state),
   ];
 
-  if (lineupsAvailable !== undefined) {
+  if (lineupQualityScore !== undefined && lineupQualityScore !== null) {
+    areas.push({
+      area: "Lineups",
+      qualityScore: lineupQualityScore,
+      qualityLabel: labelForScore(lineupQualityScore),
+      confidenceImpact: 0,
+      note: `Echter Lineup Quality Score (Batting-Order-Vollständigkeit, Positionsabdeckung, Starter-Bestätigung, Aktualität): ${lineupQualityScore}/100.`,
+    });
+  } else if (lineupsAvailable !== undefined) {
     const score = lineupsAvailable ? 100 : 0;
     areas.push({
       area: "Lineups",
@@ -114,6 +136,33 @@ export function buildDataQualityReport(state: AnalyzerState, analysis: FullAnaly
       qualityLabel: labelForScore(score),
       confidenceImpact: 0,
       note: lineupsAvailable ? "Lineups erfolgreich geladen." : "Lineups konnten nicht geladen werden (noch nicht veröffentlicht oder API-Fehler).",
+    });
+  }
+
+  if (marketIntelligenceScore !== undefined) {
+    const score = marketIntelligenceScore ?? 0;
+    areas.push({
+      area: "Market Intelligence",
+      qualityScore: score,
+      qualityLabel: labelForScore(score),
+      confidenceImpact: 0,
+      note:
+        marketIntelligenceScore !== null
+          ? `Market Intelligence Engine erfolgreich berechnet (Market Score ${score}/100).`
+          : "Keine Market Intelligence verfügbar (kein Odds-API-Key oder kein passendes Spiel gefunden).",
+    });
+  }
+
+  if (gameInfoComplete !== undefined) {
+    const score = gameInfoComplete ? 100 : 40;
+    areas.push({
+      area: "Spielinformationen",
+      qualityScore: score,
+      qualityLabel: labelForScore(score),
+      confidenceImpact: 0,
+      note: gameInfoComplete
+        ? "Spielinformationen (Datum, Uhrzeit, Status, Stadion, Saisonphase) vollständig aus der MLB Stats API geladen."
+        : "Spielinformationen unvollständig (z. B. Stadion oder Saisonphase nicht von der API geliefert).",
     });
   }
 

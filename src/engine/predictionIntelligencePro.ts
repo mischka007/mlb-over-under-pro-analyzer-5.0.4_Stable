@@ -318,6 +318,34 @@ export function detectExtremeCases(params: {
 }
 
 // ---------------------------------------------------------------------------
+// Version 6.0 (Paket 5), Punkt 4: Data-Quality-/Lineup-Quality-bewusste Confidence
+// ---------------------------------------------------------------------------
+
+/** Unterer/oberer Rand des Dämpfungsfaktors — bewusst NIE über 1.0 (keine künstliche Verstärkung), nur Reduktion bei niedriger Datenqualität. */
+const MIN_QUALITY_CONFIDENCE_FACTOR = 0.85;
+const MAX_QUALITY_CONFIDENCE_FACTOR = 1.0;
+
+/**
+ * Dämpft die bestehende, nicht-lineare Confidence (Prediction Engine
+ * 2.0, unverändert als Basis übernommen) anhand der Datenqualität
+ * (`PredictionSummary.dataQualityPct`, bereits bestehend) sowie —
+ * sofern verfügbar — dem neuen Lineup Quality Score. Rein additiv,
+ * keine starre Addition: ein gewichteter Kombinations-Score steuert
+ * einen Faktor zwischen 0,85 (niedrige Qualität) und 1,0 (hohe
+ * Qualität, keine Verstärkung) — "Markt/Daten dürfen niemals allein
+ * entscheiden, aber schlechte Datenlage reduziert automatisch die
+ * Zuverlässigkeit".
+ */
+function computeQualityAdjustedConfidence(baseConfidence: number, dataQualityPct: number, lineupQualityScore: number | null): number {
+  const combinedQuality = lineupQualityScore !== null ? dataQualityPct * 0.6 + lineupQualityScore * 0.4 : dataQualityPct;
+
+  const factor =
+    MIN_QUALITY_CONFIDENCE_FACTOR + (MAX_QUALITY_CONFIDENCE_FACTOR - MIN_QUALITY_CONFIDENCE_FACTOR) * clamp(combinedQuality / 100, 0, 1);
+
+  return clamp(baseConfidence * factor, 0, 1);
+}
+
+// ---------------------------------------------------------------------------
 // Öffentliche API
 // ---------------------------------------------------------------------------
 
@@ -339,6 +367,10 @@ export function computePredictionIntelligencePro(params: {
   linearScore: number;
   /** Bereits vorhandene Datenqualität (`PredictionSummary.dataQualityPct`). */
   dataQualityPct: number;
+  /** Bereits vorhandene, nicht-lineare Confidence aus Prediction Engine 2.0 (`PredictionEngine2Result.nonLinearConfidence`). */
+  nonLinearConfidence: number;
+  /** Version 6.0 (Paket 5): destillierter Lineup Quality Score, `null` falls Lineups noch nicht verfügbar. */
+  lineupQualityScore: number | null;
 }): PredictionIntelligenceProResult {
   const consensusBreadthFactor = computeConsensusBreadthFactor(params.modules);
   const breadthCorrectedScore = clamp(50 + (params.enhancedScore - 50) * consensusBreadthFactor, 0, 100);
@@ -366,6 +398,8 @@ export function computePredictionIntelligencePro(params: {
     dataQualityPct: params.dataQualityPct,
   });
 
+  const qualityAdjustedConfidence = computeQualityAdjustedConfidence(params.nonLinearConfidence, params.dataQualityPct, params.lineupQualityScore);
+
   const notes: string[] = [
     `Konsens-Breiten-Faktor: ${consensusBreadthFactor.toFixed(2)}× (Score ${params.enhancedScore.toFixed(1)} → ${breadthCorrectedScore.toFixed(1)}).`,
     `Umfeld-Signal: ${environmentalSignal.direction === "neutral" ? "neutral" : environmentalSignal.direction === "over" ? "Richtung Over" : "Richtung Under"} (${(Math.abs(environmentalSignal.leaning) * 100).toFixed(0)} % Ausprägung).`,
@@ -374,6 +408,7 @@ export function computePredictionIntelligencePro(params: {
       : "Keine Konflikte zwischen den Signalquellen erkannt.",
     `Signal-Stärke: ${signalStrength.label} (${signalStrength.score}/100).`,
     extremeCases.length > 0 ? `${extremeCases.length} Sondersituation(en) erkannt.` : "Keine Sondersituation erkannt.",
+    `Qualitätsbereinigte Confidence: ${(params.nonLinearConfidence * 100).toFixed(1)} % → ${(qualityAdjustedConfidence * 100).toFixed(1)} % (Datenqualität ${params.dataQualityPct.toFixed(0)}/100${params.lineupQualityScore !== null ? `, Lineup-Qualität ${params.lineupQualityScore}/100` : ", Lineup-Qualität nicht verfügbar"}).`,
   ];
 
   return {
@@ -383,6 +418,7 @@ export function computePredictionIntelligencePro(params: {
     conflictAnalysis,
     signalStrength,
     extremeCases,
+    qualityAdjustedConfidence,
     notes,
   };
 }
