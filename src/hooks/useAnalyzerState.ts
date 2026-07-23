@@ -163,6 +163,8 @@ const emptySetup = (): GameSetup => ({
   lineupQualityScore: "",
   runLineFavoriteOdds: "",
   runLineUnderdogOdds: "",
+  moneylineHomeOdds: "",
+  moneylineAwayOdds: "",
   noInjuryConcerns: true,
 });
 

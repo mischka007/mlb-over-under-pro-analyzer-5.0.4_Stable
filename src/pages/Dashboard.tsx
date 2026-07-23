@@ -7,12 +7,16 @@ import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useTheme } from "@/hooks/useTheme";
 import { computeFullAnalysis } from "@/models/GameModel";
 import { computeRunLineAnalysis } from "@/engine/runLineEngine";
+import { computeMoneylineAnalysis } from "@/engine/moneylineEngine";
+import { computeMultiMarketAnalysis } from "@/engine/multiMarketEngine";
 import { assessQuality } from "@/utils/quality";
 import { evaluatePremiumFilter } from "@/utils/consensus";
 import { saveHistoryEntry } from "@/utils/history";
 import { GameSetupBar } from "@/components/dashboard/GameSetupBar";
 import { PredictionHero } from "@/components/dashboard/PredictionHero";
 import { RunLineHero } from "@/components/dashboard/RunLineHero";
+import { MoneylineHero } from "@/components/dashboard/MoneylineHero";
+import { MultiMarketPanel } from "@/components/dashboard/MultiMarketPanel";
 import { DataAvailabilityBanner } from "@/components/dashboard/DataAvailabilityBanner";
 import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPanel";
 import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
@@ -162,6 +166,36 @@ export function Dashboard({
     return assessQuality(pseudoConsensus, pseudoFilter);
   }, [analysis, runLineAnalysis, state]);
 
+  // Version 7.1: Moneyline-Analyse — dieselbe Wiederverwendungs-Logik
+  // wie Run Line (Poisson-Split aus `advancedPrediction`, dieselben
+  // Kelly-/Sterne-/Qualitäts-Funktionen).
+  const moneylineAnalysis = useMemo(
+    () =>
+      computeMoneylineAnalysis({
+        state,
+        expectedRunsHome: analysis.advancedPrediction.expectedRunsHome,
+        expectedRunsAway: analysis.advancedPrediction.expectedRunsAway,
+        finalExpectedRuns: analysis.finalExpectedRuns,
+      }),
+    [state, analysis]
+  );
+  const moneylineQuality = useMemo(() => {
+    const pseudoConsensus = {
+      modules: analysis.consensus.modules,
+      finalScore: 50,
+      pick: null,
+      confidence: moneylineAnalysis.recommendation.confidence,
+      stars: moneylineAnalysis.recommendation.stars,
+    };
+    const pseudoFilter = evaluatePremiumFilter(
+      state.setup,
+      { ...pseudoConsensus, pick: moneylineAnalysis.recommendation.team === "home" ? "over" : "under" },
+      moneylineAnalysis.bankroll,
+      toNumber(state.weather.rainChancePct)
+    );
+    return assessQuality(pseudoConsensus, pseudoFilter);
+  }, [analysis, moneylineAnalysis, state]);
+
   // Version 6.0 (Paket 7D): EINZIGE, kanonische Data-Quality-Berechnung
   // für diese Analyse — wird sowohl von Live Monitoring (Paket 7A) als
   // auch vom System-Status-Panel (Tag 9/Paket 5) genutzt. Vorher wurde
@@ -192,6 +226,26 @@ export function Dashboard({
     onMarketChange: updateMarket,
   });
   const line = toNumber(state.setup.line) ?? 8.5;
+
+  // Version 7.1: Multi-Market-Ranking — vergleicht die bereits
+  // vollständig berechneten Over/Under-, Run-Line- und
+  // Moneyline-Ergebnisse, berechnet nichts neu.
+  const multiMarketAnalysis = useMemo(
+    () =>
+      computeMultiMarketAnalysis({
+        consensus: analysis.consensus,
+        poisson: analysis.poisson,
+        bankrollAmount: Math.max(0, toNumber(state.setup.bankroll) ?? 0),
+        ouLine: line,
+        ouMarketOdds: { over: toNumber(state.setup.oddsOver), under: toNumber(state.setup.oddsUnder) },
+        ouDataQualityGrade: quality.grade,
+        runLine: runLineAnalysis,
+        runLineDataQualityGrade: runLineQuality.grade,
+        moneyline: moneylineAnalysis,
+        moneylineDataQualityGrade: moneylineQuality.grade,
+      }),
+    [analysis, line, state, quality, runLineAnalysis, runLineQuality, moneylineAnalysis, moneylineQuality]
+  );
 
   // Überschreibt die vorläufigen Werte aus dem Auto-Load (Pitcher-/Bullpen-/
   // Offense-Matchup, Momentum, Recent Form) durch die tatsächlich aus den
@@ -301,15 +355,34 @@ export function Dashboard({
           >
             Run Line (Asian Handicap)
           </button>
+          <button
+            type="button"
+            onClick={() => setMode("multiMarket")}
+            aria-pressed={mode === "multiMarket"}
+            className={`flex-1 px-4 py-2.5 rounded-md text-sm font-mono uppercase tracking-wider border transition-colors ${
+              mode === "multiMarket" ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Multi Market
+          </button>
         </div>
 
         <GameSetupBar setup={state.setup} onChange={updateSetup} accent={accent} />
 
         {/* Hauptkarte: Premium Prediction — je nach Modus Over/Under oder Run Line */}
-        {mode === "overUnder" ? (
+        {mode === "overUnder" && (
           <PredictionHero consensus={analysis.consensus} bankroll={analysis.bankroll} line={state.setup.line} quality={quality} />
-        ) : (
-          <RunLineHero analysis={runLineAnalysis} quality={runLineQuality} />
+        )}
+        {mode === "runLine" && <RunLineHero analysis={runLineAnalysis} quality={runLineQuality} />}
+        {mode === "multiMarket" && (
+          <>
+            <MultiMarketPanel analysis={multiMarketAnalysis} />
+            {/* Moneyline-Detailansicht: Version 7.1 hat keinen eigenen Moneyline-Umschalt-Button
+                (der Nutzer wünschte ausdrücklich nur drei Buttons: Over/Under, Run Line, Multi Market).
+                Die vollständige Moneyline-Analyse bleibt im Multi-Market-Modus trotzdem im selben
+                Detailgrad wie Run Line einsehbar, statt nur als knapper Alternativen-Eintrag. */}
+            <MoneylineHero analysis={moneylineAnalysis} quality={moneylineQuality} />
+          </>
         )}
 
         {resolvedExtendedMetrics && <ExtendedMetricsPanel metrics={resolvedExtendedMetrics} />}

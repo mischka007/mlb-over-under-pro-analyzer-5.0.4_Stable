@@ -345,6 +345,9 @@ export interface GameSetup {
    */
   runLineFavoriteOdds: string;
   runLineUnderdogOdds: string;
+  /** Version 7.1: dedizierte Marktquoten für die Moneyline — bewusst getrennt von O/U- und Run-Line-Quoten. */
+  moneylineHomeOdds: string;
+  moneylineAwayOdds: string;
   /**
    * Prediction Engine PRO: Ob keine Verletzungssorgen bei Schlüsselspielern
    * (Starting Pitcher, Kern-Lineup) bekannt sind. `true` = keine bekannten
@@ -1684,7 +1687,7 @@ export interface LiveQualityMetrics {
 // Version 7.0 — Run Line (Asian Handicap) Analyzer
 // ---------------------------------------------------------------------------
 
-export type AnalysisMode = "overUnder" | "runLine";
+export type AnalysisMode = "overUnder" | "runLine" | "multiMarket";
 
 /** Eine einzelne Run-Line-Variante (z. B. -1.5/+1.5, -2.5/+2.5) mit beiden Seiten. */
 export interface RunLineOutcome {
@@ -1742,3 +1745,91 @@ export interface RunLineAnalysis {
   explainableReasons: string[];
   notes: string[];
 }
+// ---------------------------------------------------------------------------
+// Version 7.1 — Moneyline & Multi-Market Analyzer
+// ---------------------------------------------------------------------------
+
+export interface MoneylineOutcome {
+  team: "home" | "away";
+  winProbability: number;
+  fairOdds: number;
+  marketOdds: number | null;
+  valuePct: number | null;
+}
+
+export interface MoneylineRecommendation {
+  team: "home" | "away";
+  probability: number;
+  fairOdds: number;
+  marketOdds: number | null;
+  valuePct: number | null;
+  confidence: number;
+  stars: number;
+  reasoning: string[];
+}
+
+/**
+ * Vollständige Moneyline-Analyse (Version 7.1). Leitet die
+ * Gewinnwahrscheinlichkeit aus derselben Poisson-Heim-/Auswärts-
+ * Verteilung ab, die bereits für Run Line existiert (`P(Heim gewinnt)`
+ * entspricht `computeCoverProbability(..., line=0, "home")`) — keine
+ * neue Kern-Statistik, nur eine andere Auswertung derselben
+ * Verteilung. Unentschieden nach 9 Innings (`diff=0`) wird real durch
+ * Extra Innings aufgelöst; da unser Modell keine Extra-Innings-Dynamik
+ * abbildet, wird diese (kleine) Restwahrscheinlichkeit ehrlich 50/50
+ * auf Heim/Auswärts verteilt statt sie zu ignorieren oder zu erfinden.
+ */
+export interface MoneylineAnalysis {
+  homeWinProbability: number;
+  awayWinProbability: number;
+  /** Anteil der Poisson-Verteilung mit `diff=0` (Unentschieden nach 9 Innings), zur Transparenz ausgewiesen, bereits 50/50 auf Heim/Auswärts verteilt. */
+  tieProbabilityRedistributed: number;
+  outcomes: MoneylineOutcome[];
+  recommendation: MoneylineRecommendation;
+  bankroll: BankrollResult;
+  explainableReasons: string[];
+  notes: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Multi-Market: marktübergreifender Value-Vergleich
+// ---------------------------------------------------------------------------
+
+export type MarketType = "moneyline" | "overUnder" | "runLine";
+
+/**
+ * Eine einzelne, bewertete Wettmöglichkeit über alle Märkte hinweg —
+ * einheitliches Format, damit Moneyline/Over-Under/Run-Line direkt
+ * vergleichbar sind. Wird ausschließlich aus den bereits bestehenden,
+ * jeweiligen Markt-Engines befüllt (keine eigene Neuberechnung).
+ */
+export interface MarketCandidate {
+  market: MarketType;
+  label: string;
+  probability: number;
+  fairOdds: number;
+  marketOdds: number | null;
+  valuePct: number | null;
+  expectedValue: number;
+  kellyStake: number;
+  confidence: number;
+  stars: number;
+  /** 0–100, aus derselben `assessQuality()`-Logik wie in den Einzelmodi (Grade in Punkte umgerechnet). */
+  premiumScore: number;
+  distanceToTargetOdds: number;
+  reasoning: string[];
+}
+
+/**
+ * Marktübergreifendes Ranking (Version 7.1). Primäres Kriterium ist der
+ * statistische Mehrwert (Expected Value), NICHT die höchste
+ * Eintrittswahrscheinlichkeit — die Zielquote ≈2.00 wirkt nur als
+ * Tiebreaker unter ähnlich guten Kandidaten, verdrängt aber nie einen
+ * klar besseren Value-Pick (siehe `selectBestValueCandidate()`).
+ */
+export interface MultiMarketAnalysis {
+  candidates: MarketCandidate[];
+  bestValue: MarketCandidate;
+  alternatives: MarketCandidate[];
+}
+// ---------------------------------------------------------------------------

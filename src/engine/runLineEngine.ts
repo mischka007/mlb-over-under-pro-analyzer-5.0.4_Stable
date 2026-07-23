@@ -39,7 +39,7 @@ const TARGET_ODDS_MAX = 2.2;
 const SIMILAR_PROBABILITY_MARGIN_PCT = 5;
 
 /** P(sideRuns − otherRuns > line) über das gemeinsame Poisson-Gitter (Faltung zweier unabhängiger PMFs). */
-function computeCoverProbability(homePmf: number[], awayPmf: number[], line: number, side: "home" | "away"): number {
+export function computeCoverProbability(homePmf: number[], awayPmf: number[], line: number, side: "home" | "away"): number {
   const cap = homePmf.length - 1;
   let probability = 0;
   for (let h = 0; h <= cap; h++) {
@@ -51,7 +51,22 @@ function computeCoverProbability(homePmf: number[], awayPmf: number[], line: num
   return probability;
 }
 
-function fairOddsFromProbability(probability: number): number {
+/**
+ * P(homeRuns === awayRuns) über dasselbe Poisson-Gitter — wird für
+ * Version 7.1 (Moneyline) benötigt: echte MLB-Spiele enden nie
+ * unentschieden (Verlängerung bis zur Entscheidung), das
+ * 9-Innings-Poisson-Modell hat aber eine theoretische
+ * Gleichstands-Wahrscheinlichkeit, die auf Heim-/Auswärtssieg verteilt
+ * werden muss (siehe `@/engine/moneylineEngine`).
+ */
+export function computeTieProbability(homePmf: number[], awayPmf: number[]): number {
+  const cap = homePmf.length - 1;
+  let probability = 0;
+  for (let i = 0; i <= cap; i++) probability += homePmf[i] * awayPmf[i];
+  return probability;
+}
+
+export function fairOddsFromProbability(probability: number): number {
   const safe = clamp(probability, 0.01, 0.99);
   return Math.round((1 / safe) * 100) / 100;
 }
@@ -130,7 +145,7 @@ const FORM_ADVANTAGE_THRESHOLD = 0.7;
  * ausschließlich Aussagen aus real vorhandenen Datenvergleichen — keine
  * erfundene Begründung.
  */
-function buildExplainableReasons(state: AnalyzerState, favoriteTeam: "home" | "away"): string[] {
+export function buildExplainableReasons(state: AnalyzerState, favoriteTeam: "home" | "away"): string[] {
   const reasons: string[] = [];
   const favoriteLabel = favoriteTeam === "home" ? "Favorit (Heim)" : "Favorit (Auswärts)";
 
