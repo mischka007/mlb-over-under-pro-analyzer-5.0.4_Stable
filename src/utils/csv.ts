@@ -1,4 +1,4 @@
-import type { AnalyzerState, ConsensusResult, GameInfo, LineupQualityScore, MarketIntelligenceResult, PoissonResult, SmartAlert } from "@/types";
+import type { AnalysisMode, AnalyzerState, ConsensusResult, GameInfo, LineupQualityScore, MarketIntelligenceResult, PoissonResult, RunLineAnalysis, SmartAlert } from "@/types";
 import { isoDateStamp } from "@/utils/format";
 
 /** Escaped einen CSV-Feldwert (Kommas, Anführungszeichen, Zeilenumbrüche). */
@@ -18,6 +18,11 @@ function csvEscape(value: string | number): string {
  * `lineupQuality` sind optional — werden sie übergeben, erscheinen die
  * Spielinformationen, Market-Intelligence- und Lineup-Quality-Daten als
  * zusätzliche Abschnitte in der CSV.
+ *
+ * Version 7.0: `mode`/`runLineAnalysis` erkennen automatisch, welcher
+ * Analysemodus verwendet wurde (Spalte "Analysemodus" ganz oben) und
+ * hängen bei aktivem Run-Line-Modus einen eigenen Abschnitt mit der
+ * vollständigen Run-Line-Empfehlung an.
  */
 export function exportAnalysisAsCsv(
   state: AnalyzerState,
@@ -25,9 +30,14 @@ export function exportAnalysisAsCsv(
   poisson: PoissonResult,
   gameInfo?: GameInfo | null,
   marketIntelligence?: MarketIntelligenceResult | null,
-  lineupQuality?: LineupQualityScore | null
+  lineupQuality?: LineupQualityScore | null,
+  mode: AnalysisMode = "overUnder",
+  runLineAnalysis?: RunLineAnalysis | null
 ): void {
-  const rows: (string | number)[][] = [["Feld", "Wert"]];
+  const rows: (string | number)[][] = [
+    ["Feld", "Wert"],
+    ["Analysemodus", mode === "runLine" ? "Run Line" : "Over/Under"],
+  ];
 
   if (gameInfo) {
     rows.push(
@@ -101,6 +111,34 @@ export function exportAnalysisAsCsv(
       ["Positionsabdeckung", lineupQuality.positionCoverage.toFixed(0)],
       ["Starter bestätigt", lineupQuality.pitcherConfirmed ? "Ja" : "Nein"],
       ["Beide Lineups verfügbar", lineupQuality.bothLineupsAvailable ? "Ja" : "Nein"]
+    );
+  }
+
+  if (mode === "runLine" && runLineAnalysis) {
+    const { recommendation } = runLineAnalysis;
+    rows.push(
+      [""],
+      ["Run Line", ""],
+      ["Heim erwartete Runs", runLineAnalysis.homeExpectedRuns.toFixed(2)],
+      ["Auswärts erwartete Runs", runLineAnalysis.awayExpectedRuns.toFixed(2)],
+      ["Erwartete Run-Differenz", runLineAnalysis.expectedRunDifferential.toFixed(2)],
+      ["Favorit", runLineAnalysis.favoriteTeam === "home" ? "Heim" : "Auswärts"],
+      ["Empfohlene Run Line", `${recommendation.side === "favorite" ? "−" : "+"}${recommendation.line}`],
+      ["Empfohlenes Team", recommendation.team === "home" ? "Heim" : "Auswärts"],
+      ["Wahrscheinlichkeit", (recommendation.probability * 100).toFixed(1) + "%"],
+      ["Faire Quote", recommendation.fairOdds.toFixed(2)],
+      ["Marktquote", recommendation.marketOdds?.toFixed(2) ?? "–"],
+      ["Value %", recommendation.valuePct !== null ? recommendation.valuePct.toFixed(1) : "–"],
+      ["Abstand zur Zielquote (2.00)", recommendation.distanceToTargetOdds.toFixed(2)],
+      [""],
+      ["Run Line", "Favorit-Quote", "Favorit-Wahrsch.", "Underdog-Quote", "Underdog-Wahrsch."],
+      ...runLineAnalysis.outcomes.map((o) => [
+        `±${o.line}`,
+        o.favoriteFairOdds.toFixed(2),
+        (o.favoriteCoverProbability * 100).toFixed(1) + "%",
+        o.underdogFairOdds.toFixed(2),
+        (o.underdogCoverProbability * 100).toFixed(1) + "%",
+      ])
     );
   }
 

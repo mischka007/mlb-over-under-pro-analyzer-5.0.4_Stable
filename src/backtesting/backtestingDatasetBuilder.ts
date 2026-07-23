@@ -1,5 +1,6 @@
 import { computeFullAnalysis } from "@/models/GameModel";
 import { evaluateBacktestGame } from "./backtestEngine";
+import { computeRunLineAnalysis } from "@/engine/runLineEngine";
 import type { BacktestDatasetRecord, ModuleInfluence } from "@/types";
 import type { BacktestGame } from "./backtestTypes";
 import type { HistoricalBacktestState } from "./historicalBacktestState";
@@ -30,6 +31,25 @@ function determineActualOutcome(actualRuns: number, line: number): "over" | "und
 function buildRecordForGame(state: HistoricalBacktestState["state"], game: BacktestGame): BacktestDatasetRecord {
   const analysis = computeFullAnalysis(state);
   const { consensus, advancedPrediction, premiumBetAssessment } = analysis;
+
+  // Version 7.0: Run-Line-Backtest für dasselbe Spiel — nutzt dieselbe
+  // bereits oben berechnete `analysis` (kein zweiter `computeFullAnalysis()`-
+  // Aufruf, keine doppelte Berechnung).
+  const runLineAnalysis = computeRunLineAnalysis({
+    state,
+    finalExpectedRuns: analysis.finalExpectedRuns,
+    confidence: consensus.confidence,
+    expectedRunsHome: advancedPrediction.expectedRunsHome,
+    expectedRunsAway: advancedPrediction.expectedRunsAway,
+  });
+  const { recommendation: runLineRecommendation } = runLineAnalysis;
+
+  // Echter Trefferstatus aus den tatsächlich gespeicherten Endständen
+  // (`game.homeRuns`/`game.awayRuns`) — keine Schätzung.
+  const actualDifferential = game.homeRuns - game.awayRuns;
+  const teamDifferential = runLineRecommendation.team === "home" ? actualDifferential : -actualDifferential;
+  const requiredMargin = runLineRecommendation.side === "favorite" ? runLineRecommendation.line : -runLineRecommendation.line;
+  const runLineHit = teamDifferential > requiredMargin;
 
   const moduleInfluences: ModuleInfluence[] = analysis.modules
     .filter((m) => m.hasData)
@@ -106,6 +126,14 @@ function buildRecordForGame(state: HistoricalBacktestState["state"], game: Backt
     reverseLineMovementDetected: false,
     steamMoveDetected: false,
     clv: null,
+
+    // Version 7.0: getrennte Run-Line-Statistik (siehe Typ-Dokumentation).
+    runLineFavorite: runLineAnalysis.favoriteTeam,
+    runLineRecommendedSide: runLineRecommendation.side,
+    runLineRecommendedLine: runLineRecommendation.line,
+    runLineProbability: runLineRecommendation.probability,
+    runLineHit,
+    runLineProfitLoss: null,
   };
 }
 

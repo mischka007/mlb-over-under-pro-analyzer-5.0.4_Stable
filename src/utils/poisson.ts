@@ -5,8 +5,13 @@ import { clamp } from "@/utils/math";
  * Berechnet die Poisson-Wahrscheinlichkeitsmassefunktion (PMF) für λ = expectedRuns
  * über k = 0..cap, iterativ berechnet um Fakultäts-Overflow bei großen k zu vermeiden:
  * P(0) = e^-λ,  P(k) = P(k-1) * λ / k
+ *
+ * Version 7.0: exportiert, damit der neue Run-Line-Analyzer
+ * (`@/engine/runLineEngine`) dieselbe, bereits validierte PMF-Berechnung
+ * wiederverwenden kann, statt sie zu duplizieren. Die Funktion selbst
+ * bleibt unverändert.
  */
-function poissonPmf(lambda: number, cap: number): number[] {
+export function poissonPmf(lambda: number, cap: number): number[] {
   const pmf = new Array(cap + 1).fill(0);
   pmf[0] = Math.exp(-lambda);
   for (let k = 1; k <= cap; k++) {

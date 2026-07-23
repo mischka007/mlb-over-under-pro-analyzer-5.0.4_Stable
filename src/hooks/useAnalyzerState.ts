@@ -161,6 +161,8 @@ const emptySetup = (): GameSetup => ({
   pitcherConfirmed: false,
   weatherConfirmed: false,
   lineupQualityScore: "",
+  runLineFavoriteOdds: "",
+  runLineUnderdogOdds: "",
   noInjuryConcerns: true,
 });
 

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { RefObject } from "react";
 import { Download, FileImage, FileSpreadsheet, FileText, History } from "lucide-react";
-import type { AnalyzerState, ConsensusResult, GameInfo, LineupQualityScore, MarketIntelligenceResult, PoissonResult, SmartAlert } from "@/types";
+import type { AnalysisMode, AnalyzerState, ConsensusResult, GameInfo, LineupQualityScore, MarketIntelligenceResult, PoissonResult, RunLineAnalysis, SmartAlert } from "@/types";
 import { Card, SectionHeader } from "@/components/common/UI";
 import { exportAnalysisAsCsv, exportChangeHistoryAsCsv } from "@/utils/csv";
 import { isoDateStamp } from "@/utils/format";
@@ -21,6 +21,8 @@ export function ExportPanel({
   marketIntelligence,
   lineupQuality,
   changeHistory,
+  mode,
+  runLineAnalysis,
 }: {
   state: AnalyzerState;
   consensus: ConsensusResult;
@@ -31,11 +33,14 @@ export function ExportPanel({
   lineupQuality?: LineupQualityScore | null;
   /** Version 6.0 (Paket 7B): Live-Monitoring-Change-History, sofern vorhanden. */
   changeHistory?: SmartAlert[];
+  /** Version 7.0: aktueller Analysemodus + Run-Line-Ergebnis, fließen automatisch in den CSV-Export ein. */
+  mode?: AnalysisMode;
+  runLineAnalysis?: RunLineAnalysis | null;
 }) {
   const [isExporting, setIsExporting] = useState<"png" | "pdf" | null>(null);
 
   const handleCsvExport = () => {
-    exportAnalysisAsCsv(state, consensus, poisson, gameInfo, marketIntelligence, lineupQuality);
+    exportAnalysisAsCsv(state, consensus, poisson, gameInfo, marketIntelligence, lineupQuality, mode, runLineAnalysis);
   };
 
   const handleChangeHistoryExport = () => {

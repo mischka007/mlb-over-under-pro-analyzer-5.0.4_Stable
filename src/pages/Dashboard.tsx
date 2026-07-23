@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, RotateCcw, Save } from "lucide-react";
-import type { AnalyzerState, ExtendedMetrics, GameCardSummary, GameInfo, LineupQualityScore, MarketIntelligenceResult } from "@/types";
+import type { AnalysisMode, AnalyzerState, ExtendedMetrics, GameCardSummary, GameInfo, LineupQualityScore, MarketIntelligenceResult } from "@/types";
 import type { AvailabilityFlags } from "@/hooks/useGameAutoLoad";
 import { useAnalyzerState } from "@/hooks/useAnalyzerState";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useTheme } from "@/hooks/useTheme";
 import { computeFullAnalysis } from "@/models/GameModel";
+import { computeRunLineAnalysis } from "@/engine/runLineEngine";
 import { assessQuality } from "@/utils/quality";
 import { saveHistoryEntry } from "@/utils/history";
 import { GameSetupBar } from "@/components/dashboard/GameSetupBar";
 import { PredictionHero } from "@/components/dashboard/PredictionHero";
+import { RunLineHero } from "@/components/dashboard/RunLineHero";
 import { DataAvailabilityBanner } from "@/components/dashboard/DataAvailabilityBanner";
 import { ExtendedMetricsPanel } from "@/components/dashboard/ExtendedMetricsPanel";
 import { DecisionSupportPanel } from "@/components/dashboard/DecisionSupportPanel";
@@ -72,6 +74,15 @@ export function Dashboard({
   const { state, updateSetup, updateTeam, updateWeather, updateBallpark, updateH2H, updateMarket, resetAll, replaceState } = useAnalyzerState();
   const { theme, setTheme } = useTheme();
   const [accent, setAccent] = useState<AccentColor>("gold");
+  /**
+   * Version 7.0: Umschaltfunktion zwischen Over/Under- und Run-Line-
+   * Modus. Öffnet keine neue Seite — schaltet lediglich um, welche
+   * prognosespezifischen Panels angezeigt werden. Alle Eingabemodule
+   * (Form, Pitcher, Bullpen, Offense, Wetter, Ballpark, H2H, Markt)
+   * bleiben in beiden Modi unverändert sichtbar, da sie dieselbe
+   * zugrunde liegende Datenbasis für beide Analysearten liefern.
+   */
+  const [mode, setMode] = useState<AnalysisMode>("overUnder");
   const [animationsEnabled, setAnimationsEnabled] = useState(true);
   const [saved, setSaved] = useState(false);
   const dashboardRef = useRef<HTMLDivElement>(null);
@@ -100,6 +111,32 @@ export function Dashboard({
     return { analysis: result, computationDurationMs: performance.now() - start };
   }, [debouncedState]);
   const quality = useMemo(() => assessQuality(analysis.consensus, analysis.premiumFilter), [analysis]);
+
+  // Version 7.0: Run-Line-Analyse — nutzt ausschließlich das bereits
+  // validierte `analysis.finalExpectedRuns`-Total und die bestehende
+  // Gesamt-Confidence, keine eigene Neuberechnung der Kern-Statistik.
+  // Bewusst immer berechnet (nicht nur bei aktivem Run-Line-Modus) —
+  // die Berechnung ist günstig (siehe `@/engine/runLineEngine`), so
+  // schaltet der Modus-Umschalter sofort um, ohne erneut zu laden.
+  //
+  // Live Monitoring (Paket 7A–7C) unterstützt den Run-Line-Modus bereits
+  // vollständig automatisch, ohne zusätzlichen Code: `onWeatherChange`/
+  // `onMarketChange` aktualisieren `state` über die bereits bestehenden
+  // Setter, `runLineAnalysis` hängt (wie `analysis`) reaktiv von `state`
+  // ab und wird dadurch bei jeder erkannten Wetter-/Odds-Änderung
+  // automatisch neu berechnet — derselbe Mechanismus wie für den
+  // Over/Under-Modus, keine Dopplung nötig.
+  const runLineAnalysis = useMemo(
+    () =>
+      computeRunLineAnalysis({
+        state,
+        finalExpectedRuns: analysis.finalExpectedRuns,
+        confidence: analysis.consensus.confidence,
+        expectedRunsHome: analysis.advancedPrediction.expectedRunsHome,
+        expectedRunsAway: analysis.advancedPrediction.expectedRunsAway,
+      }),
+    [state, analysis]
+  );
 
   // Version 6.0 (Paket 7D): EINZIGE, kanonische Data-Quality-Berechnung
   // für diese Analyse — wird sowohl von Live Monitoring (Paket 7A) als
@@ -218,10 +255,38 @@ export function Dashboard({
         {/* Spielinformationen (Version 6.0, Paket 5) — oberhalb der Analyse */}
         <GameInfoPanel data={gameInfo} />
 
+        {/* Version 7.0: Umschaltfunktion Over/Under ↔ Run Line — oberhalb der Analyse, gut sichtbar */}
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMode("overUnder")}
+            aria-pressed={mode === "overUnder"}
+            className={`flex-1 px-4 py-2.5 rounded-md text-sm font-mono uppercase tracking-wider border transition-colors ${
+              mode === "overUnder" ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Over / Under
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("runLine")}
+            aria-pressed={mode === "runLine"}
+            className={`flex-1 px-4 py-2.5 rounded-md text-sm font-mono uppercase tracking-wider border transition-colors ${
+              mode === "runLine" ? "bg-gold-500/20 border-gold-500 text-slate-100" : "bg-base-800 border-base-600 text-slate-500 hover:text-slate-300"
+            }`}
+          >
+            Run Line (Asian Handicap)
+          </button>
+        </div>
+
         <GameSetupBar setup={state.setup} onChange={updateSetup} accent={accent} />
 
-        {/* Hauptkarte: Premium Prediction */}
-        <PredictionHero consensus={analysis.consensus} bankroll={analysis.bankroll} line={state.setup.line} quality={quality} />
+        {/* Hauptkarte: Premium Prediction — je nach Modus Over/Under oder Run Line */}
+        {mode === "overUnder" ? (
+          <PredictionHero consensus={analysis.consensus} bankroll={analysis.bankroll} line={state.setup.line} quality={quality} />
+        ) : (
+          <RunLineHero analysis={runLineAnalysis} />
+        )}
 
         {resolvedExtendedMetrics && <ExtendedMetricsPanel metrics={resolvedExtendedMetrics} />}
 
@@ -279,11 +344,15 @@ export function Dashboard({
           <MarketModule data={state.market} onChange={updateMarket} />
         </div>
 
-        {/* Poisson-Modell */}
-        <RunDistributionChart poisson={analysis.poisson} line={line} />
+        {mode === "overUnder" && (
+          <>
+            {/* Poisson-Modell */}
+            <RunDistributionChart poisson={analysis.poisson} line={line} />
 
-        {/* Monte-Carlo-Simulation */}
-        <MonteCarloChart result={analysis.montecarlo} line={line} />
+            {/* Monte-Carlo-Simulation */}
+            <MonteCarloChart result={analysis.montecarlo} line={line} />
+          </>
+        )}
 
         {/* Explainable AI & Smart Decision Support (Tag 8) */}
         <DecisionSupportPanel analysis={analysis} accent={accent} />
@@ -307,14 +376,16 @@ export function Dashboard({
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <RadarScoreChart modules={analysis.modules} />
           <ConfidenceGauge confidence={analysis.consensus.confidence} />
-          <ProbabilityDonut
-            overProbability={analysis.poisson.overProbability}
-            underProbability={analysis.poisson.underProbability}
-            pushProbability={analysis.poisson.pushProbability}
-          />
+          {mode === "overUnder" && (
+            <ProbabilityDonut
+              overProbability={analysis.poisson.overProbability}
+              underProbability={analysis.poisson.underProbability}
+              pushProbability={analysis.poisson.pushProbability}
+            />
+          )}
         </div>
 
-        <LineHeatmap expectedRuns={analysis.finalExpectedRuns} line={line} />
+        {mode === "overUnder" && <LineHeatmap expectedRuns={analysis.finalExpectedRuns} line={line} />}
 
         {/* Bankroll-Rechner */}
         <BankrollCalculator result={analysis.bankroll} bankroll={toNumber(state.setup.bankroll) ?? 0} />
@@ -330,6 +401,8 @@ export function Dashboard({
             marketIntelligence={marketIntelligence}
             lineupQuality={lineupQuality}
             changeHistory={liveMonitoring.changeHistory}
+            mode={mode}
+            runLineAnalysis={runLineAnalysis}
           />
           <SettingsPanel
             theme={theme}

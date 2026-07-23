@@ -59,6 +59,13 @@ const CSV_COLUMNS: { header: string; get: (r: BacktestDatasetRecord) => string |
   { header: "Reverse Line Movement", get: (r) => (r.reverseLineMovementDetected ? "Ja" : "Nein") },
   { header: "Steam Move", get: (r) => (r.steamMoveDetected ? "Ja" : "Nein") },
   { header: "CLV", get: (r) => (r.clv !== null ? r.clv.toFixed(2) : "–") },
+  { header: "Run Line Favorit", get: (r) => (r.runLineFavorite === "home" ? "Heim" : r.runLineFavorite === "away" ? "Auswärts" : "–") },
+  {
+    header: "Run Line Empfehlung",
+    get: (r) => (r.runLineRecommendedSide !== null && r.runLineRecommendedLine !== null ? `${r.runLineRecommendedSide === "favorite" ? "−" : "+"}${r.runLineRecommendedLine}` : "–"),
+  },
+  { header: "Run Line Wahrscheinlichkeit", get: (r) => (r.runLineProbability !== null ? (r.runLineProbability * 100).toFixed(1) + "%" : "–") },
+  { header: "Run Line Treffer", get: (r) => (r.runLineHit === null ? "–" : r.runLineHit ? "Ja" : "Nein") },
 ];
 
 /**

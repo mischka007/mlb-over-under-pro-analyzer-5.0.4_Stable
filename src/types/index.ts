@@ -338,6 +338,14 @@ export interface GameSetup {
    */
   lineupQualityScore: string;
   /**
+   * Version 7.0: echte, dedizierte Marktquoten für den Run-Line-Modus —
+   * bewusst getrennt von `oddsOver`/`oddsUnder` (die gehören zum
+   * Over/Under-Markt und dürfen nicht zweckentfremdet werden). Leer,
+   * falls der Nutzer keine Run-Line-Quote hinterlegt hat.
+   */
+  runLineFavoriteOdds: string;
+  runLineUnderdogOdds: string;
+  /**
    * Prediction Engine PRO: Ob keine Verletzungssorgen bei Schlüsselspielern
    * (Starting Pitcher, Kern-Lineup) bekannt sind. `true` = keine bekannten
    * Probleme (Standardwert, keine Auswirkung). `false` = eine bekannte
@@ -870,6 +878,24 @@ export interface BacktestDatasetRecord {
   reverseLineMovementDetected: boolean;
   steamMoveDetected: boolean;
   clv: number | null;
+
+  /**
+   * Version 7.0: getrennte Run-Line-Statistik für dasselbe historische
+   * Spiel — nutzt den bereits vorhandenen `computeRunLineAnalysis()`
+   * (unverändert) sowie die real gespeicherten Endstände
+   * (`homeRuns`/`awayRuns`) für die Standard-Run-Line ±1.5.
+   * `runLineProfitLoss` bleibt bewusst `null`: es gibt im Projekt keine
+   * echten historischen Run-Line-Quoten (nur Total-Quoten werden
+   * historisch erfasst) — ein Gewinn/Verlust ohne echte Quote würde
+   * eine Quote erfinden. `runLineHit` ist dagegen aus den echten
+   * Endständen berechenbar und daher gesetzt.
+   */
+  runLineFavorite: "home" | "away" | null;
+  runLineRecommendedSide: "favorite" | "underdog" | null;
+  runLineRecommendedLine: number | null;
+  runLineProbability: number | null;
+  runLineHit: boolean | null;
+  runLineProfitLoss: null;
 }
 
 /** Auswertung einer Gruppe von Spielen mit ähnlichem Market Score (Version 6.0, Paket 4, Schritt 9). */
@@ -1653,4 +1679,62 @@ export interface LiveQualityMetrics {
   averageAlertConfidence: number;
   checksPerformed: number;
   changesDetectedCount: number;
+}
+// ---------------------------------------------------------------------------
+// Version 7.0 — Run Line (Asian Handicap) Analyzer
+// ---------------------------------------------------------------------------
+
+export type AnalysisMode = "overUnder" | "runLine";
+
+/** Eine einzelne Run-Line-Variante (z. B. -1.5/+1.5, -2.5/+2.5) mit beiden Seiten. */
+export interface RunLineOutcome {
+  line: number;
+  favoriteTeam: "home" | "away";
+  /** Wahrscheinlichkeit, dass der Favorit die Linie (−line) deckt. */
+  favoriteCoverProbability: number;
+  /** Wahrscheinlichkeit, dass der Underdog die Linie (+line) deckt — exakt `1 - favoriteCoverProbability` (halbe Linien, kein Push möglich). */
+  underdogCoverProbability: number;
+  favoriteFairOdds: number;
+  underdogFairOdds: number;
+}
+
+/** Begründete Empfehlung für eine konkrete Run-Line-Seite (Schritt "Zielquote"). */
+export interface RunLineRecommendation {
+  line: number;
+  side: "favorite" | "underdog";
+  team: "home" | "away";
+  probability: number;
+  fairOdds: number;
+  marketOdds: number | null;
+  valuePct: number | null;
+  confidence: number;
+  /** Abstand der (Fair- oder Markt-)Quote zur Zielquote ≈2.00. */
+  distanceToTargetOdds: number;
+  reasoning: string[];
+}
+
+/**
+ * Vollständiges Run-Line-Analyseergebnis (Version 7.0). Nutzt
+ * ausschließlich bereits bestehende, unveränderte Bausteine
+ * (`pitcherExpectedRunsAllowed`, `offenseExpectedRuns`,
+ * `bullpenExpectedRuns` aus `@/utils/scoring`; `poissonPmf` aus
+ * `@/utils/poisson`) — keine neue Datenquelle, keine neue Kern-Statistik.
+ */
+export interface RunLineAnalysis {
+  homeExpectedRuns: number;
+  awayExpectedRuns: number;
+  expectedRunDifferential: number;
+  favoriteTeam: "home" | "away";
+  outcomes: RunLineOutcome[];
+  recommendation: RunLineRecommendation;
+  /** `true`, falls Heim-/Auswärts-Aufteilung mangels Daten nur symmetrisch angenommen wurde (transparent, kein erfundener Vorteil). */
+  splitEstimated: boolean;
+  /**
+   * Explainable AI (Version 7.0): mit "+"/"−" markierte Gründe für den
+   * Favoriten, analog zur bestehenden Decision-Support-Darstellung
+   * (Tag 8) — hier speziell für den Team-vs-Team-Vergleich der Run
+   * Line statt der Modul-Einflüsse auf das Gesamt-Total.
+   */
+  explainableReasons: string[];
+  notes: string[];
 }
