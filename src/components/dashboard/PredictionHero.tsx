@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { Star, TrendingDown, TrendingUp } from "lucide-react";
 import type { BankrollResult, ConsensusResult, QualityAssessment } from "@/types";
-import { Badge } from "@/components/common/UI";
+import { Badge, MetricTile } from "@/components/common/UI";
 import { formatCurrency, formatPercent, formatSigned } from "@/utils/format";
 
 /**
@@ -83,15 +83,5 @@ export function PredictionHero({
         </>
       )}
     </motion.div>
-  );
-}
-
-function MetricTile({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "green" | "red" }) {
-  const toneClass = tone === "green" ? "text-posgreen-400" : tone === "red" ? "text-negred-400" : "text-slate-100";
-  return (
-    <div className="rounded-lg border border-base-600 bg-base-800/60 px-3 py-2.5">
-      <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
-      <div className={`font-numeric text-xl leading-none ${toneClass}`}>{value}</div>
-    </div>
   );
 }

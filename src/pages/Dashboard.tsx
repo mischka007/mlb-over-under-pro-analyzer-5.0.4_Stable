@@ -8,6 +8,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { computeFullAnalysis } from "@/models/GameModel";
 import { computeRunLineAnalysis } from "@/engine/runLineEngine";
 import { assessQuality } from "@/utils/quality";
+import { evaluatePremiumFilter } from "@/utils/consensus";
 import { saveHistoryEntry } from "@/utils/history";
 import { GameSetupBar } from "@/components/dashboard/GameSetupBar";
 import { PredictionHero } from "@/components/dashboard/PredictionHero";
@@ -131,12 +132,35 @@ export function Dashboard({
       computeRunLineAnalysis({
         state,
         finalExpectedRuns: analysis.finalExpectedRuns,
-        confidence: analysis.consensus.confidence,
         expectedRunsHome: analysis.advancedPrediction.expectedRunsHome,
         expectedRunsAway: analysis.advancedPrediction.expectedRunsAway,
       }),
     [state, analysis]
   );
+
+  // Run-Line-Qualitätsbewertung: nutzt exakt dieselben, bereits
+  // bestehenden Funktionen wie der Over/Under-Modus (`assessQuality()`,
+  // `evaluatePremiumFilter()`, unverändert) — "gleiche Qualitätsmaßstäbe"
+  // wörtlich umgesetzt, keine zweite Bewertungslogik. Die Datenqualität
+  // (`modules`) ist dieselbe wie im O/U-Modus (dieselben Pitcher-/
+  // Bullpen-/Offense-/Wetter-Eingaben); nur Confidence/EV/Kelly stammen
+  // aus der Run-Line-eigenen Empfehlung.
+  const runLineQuality = useMemo(() => {
+    const pseudoConsensus = {
+      modules: analysis.consensus.modules,
+      finalScore: 50,
+      pick: null,
+      confidence: runLineAnalysis.recommendation.confidence,
+      stars: runLineAnalysis.recommendation.stars,
+    };
+    const pseudoFilter = evaluatePremiumFilter(
+      state.setup,
+      { ...pseudoConsensus, pick: runLineAnalysis.recommendation.side === "favorite" ? "over" : "under" },
+      runLineAnalysis.bankroll,
+      toNumber(state.weather.rainChancePct)
+    );
+    return assessQuality(pseudoConsensus, pseudoFilter);
+  }, [analysis, runLineAnalysis, state]);
 
   // Version 6.0 (Paket 7D): EINZIGE, kanonische Data-Quality-Berechnung
   // für diese Analyse — wird sowohl von Live Monitoring (Paket 7A) als
@@ -285,7 +309,7 @@ export function Dashboard({
         {mode === "overUnder" ? (
           <PredictionHero consensus={analysis.consensus} bankroll={analysis.bankroll} line={state.setup.line} quality={quality} />
         ) : (
-          <RunLineHero analysis={runLineAnalysis} />
+          <RunLineHero analysis={runLineAnalysis} quality={runLineQuality} />
         )}
 
         {resolvedExtendedMetrics && <ExtendedMetricsPanel metrics={resolvedExtendedMetrics} />}

@@ -1708,6 +1708,8 @@ export interface RunLineRecommendation {
   marketOdds: number | null;
   valuePct: number | null;
   confidence: number;
+  /** 1–5, aus derselben Formel wie `ConsensusResult.stars` (siehe `starsFromConfidence()` in `@/utils/consensus`). */
+  stars: number;
   /** Abstand der (Fair- oder Markt-)Quote zur Zielquote ≈2.00. */
   distanceToTargetOdds: number;
   reasoning: string[];
@@ -1727,6 +1729,8 @@ export interface RunLineAnalysis {
   favoriteTeam: "home" | "away";
   outcomes: RunLineOutcome[];
   recommendation: RunLineRecommendation;
+  /** Kelly-/Bankroll-Berechnung für die Empfehlung, aus derselben bestehenden `computeBankrollResult()` (`@/utils/kelly`) wie im Over/Under-Modus. */
+  bankroll: BankrollResult;
   /** `true`, falls Heim-/Auswärts-Aufteilung mangels Daten nur symmetrisch angenommen wurde (transparent, kein erfundener Vorteil). */
   splitEstimated: boolean;
   /**

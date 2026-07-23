@@ -38,7 +38,6 @@ function buildRecordForGame(state: HistoricalBacktestState["state"], game: Backt
   const runLineAnalysis = computeRunLineAnalysis({
     state,
     finalExpectedRuns: analysis.finalExpectedRuns,
-    confidence: consensus.confidence,
     expectedRunsHome: advancedPrediction.expectedRunsHome,
     expectedRunsAway: advancedPrediction.expectedRunsAway,
   });

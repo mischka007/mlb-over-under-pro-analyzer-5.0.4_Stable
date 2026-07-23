@@ -3,6 +3,8 @@ import { assessBullpenQuality, assessOffenseQuality, assessPitcherQuality } from
 import { poissonPmf } from "@/utils/poisson";
 import { clamp, toNumber } from "@/utils/math";
 import { formatSigned } from "@/utils/format";
+import { starsFromConfidence } from "@/utils/consensus";
+import { computeBankrollResult } from "@/utils/kelly";
 
 /**
  * Version 7.0 — Run Line (Asian Handicap) Analyzer, Prediction Engine.
@@ -198,15 +200,16 @@ function buildExplainableReasons(state: AnalyzerState, favoriteTeam: "home" | "a
  * (`FullAnalysis.finalExpectedRuns`, unverändert übernommen).
  * `expectedRunsHome`/`expectedRunsAway` stammen aus der bereits
  * bestehenden `AdvancedPrediction` (Prediction Engine PRO) — werden
- * hier nur übernommen, nicht neu berechnet.
- * `confidence` ist die bereits bestehende Gesamt-Confidence
- * (`ConsensusResult.confidence`/`PredictionEngine2Result.nonLinearConfidence`),
- * wird nur übernommen, nicht neu berechnet.
+ * hier nur übernommen, nicht neu berechnet. Die Run-Line-Confidence
+ * wird intern aus der Wahrscheinlichkeit der gewählten Empfehlung
+ * abgeleitet (dieselbe mathematische Herleitung wie die bestehende
+ * Over/Under-Confidence, siehe `computeConsensus()`) — sie spiegelt
+ * damit die Überzeugung DIESER Run-Line-Empfehlung wider, statt die
+ * Over/Under-Confidence zu übernehmen.
  */
 export function computeRunLineAnalysis(params: {
   state: AnalyzerState;
   finalExpectedRuns: number;
-  confidence: number;
   /** Bereits bestehender, validierter Split aus `AdvancedPrediction.expectedRunsHome`/`.expectedRunsAway` (Prediction Engine PRO). */
   expectedRunsHome: number | null;
   expectedRunsAway: number | null;
@@ -266,6 +269,15 @@ export function computeRunLineAnalysis(params: {
   const bestOverall = [...candidates].sort((a, b) => b.probability - a.probability)[0];
   const chosen = selectRecommendation(candidates);
 
+  // Confidence aus der EIGENEN Wahrscheinlichkeit der gewählten Run Line
+  // abgeleitet — dieselbe mathematische Herleitung wie bei der
+  // bestehenden Over/Under-Confidence (`Math.abs(finalScore-50)/50*0.5+0.5`
+  // in `computeConsensus()`), nur auf eine 0–1-Wahrscheinlichkeit statt
+  // einen 0–100-Modul-Score angewendet. Dadurch spiegelt die Run-Line-
+  // Confidence die Überzeugung DIESER Empfehlung wider, statt die
+  // O/U-Confidence zu übernehmen.
+  const confidence = clamp(Math.abs(chosen.probability - 0.5) / 0.5 * 0.5 + 0.5, 0, 1);
+
   const valuePct = chosen.marketOdds !== null ? (chosen.probability * chosen.marketOdds - 1) * 100 : null;
   const distanceToTargetOdds = Math.abs((chosen.marketOdds ?? chosen.fairOdds) - TARGET_ODDS);
 
@@ -277,7 +289,8 @@ export function computeRunLineAnalysis(params: {
     fairOdds: chosen.fairOdds,
     marketOdds: chosen.marketOdds,
     valuePct,
-    confidence: params.confidence,
+    confidence,
+    stars: starsFromConfidence(confidence),
     distanceToTargetOdds,
     reasoning: buildReasoning(chosen, bestOverall, splitEstimated),
   };
@@ -290,5 +303,13 @@ export function computeRunLineAnalysis(params: {
     splitEstimated ? "Heim-/Auswärts-Aufteilung mangels Daten symmetrisch angenommen." : "Heim-/Auswärts-Aufteilung aus der bestehenden Prediction Engine PRO übernommen.",
   ];
 
-  return { homeExpectedRuns, awayExpectedRuns, expectedRunDifferential, favoriteTeam, outcomes, recommendation, splitEstimated, explainableReasons, notes };
+  // Kelly/Bankroll: dieselbe bestehende `computeBankrollResult()` wie im
+  // Over/Under-Modus (unverändert wiederverwendet). Ohne hinterlegte
+  // Marktquote wird — konsistent mit der bestehenden O/U-Konvention in
+  // `GameModel.ts` (Fallback 1.91) — die faire Quote als neutrale
+  // Rechengrundlage verwendet, kein erfundener Marktwert.
+  const bankrollAmount = Math.max(0, toNumber(params.state.setup.bankroll) ?? 0);
+  const bankroll = computeBankrollResult(recommendation.probability, recommendation.marketOdds ?? recommendation.fairOdds, bankrollAmount);
+
+  return { homeExpectedRuns, awayExpectedRuns, expectedRunDifferential, favoriteTeam, outcomes, recommendation, bankroll, splitEstimated, explainableReasons, notes };
 }

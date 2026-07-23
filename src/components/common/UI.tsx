@@ -297,3 +297,19 @@ export function Badge({ children, tone = "neutral" }: { children: ReactNode; ton
     </span>
   );
 }
+
+// ---------------------------------------------------------------------------
+// MetricTile: kleine Kennzahl-Kachel für Premium-Prediction-Karten
+// (ursprünglich in PredictionHero.tsx, hierher verschoben, damit sowohl
+// die Over/Under- als auch die Run-Line-Premium-Karte dieselbe
+// Komponente nutzen — keine Dopplung).
+// ---------------------------------------------------------------------------
+export function MetricTile({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "green" | "red" }) {
+  const toneClass = tone === "green" ? "text-posgreen-400" : tone === "red" ? "text-negred-400" : "text-slate-100";
+  return (
+    <div className="rounded-lg border border-base-600 bg-base-800/60 px-3 py-2.5">
+      <div className="font-mono text-[9px] uppercase tracking-wider text-slate-500 mb-1">{label}</div>
+      <div className={`font-numeric text-xl leading-none ${toneClass}`}>{value}</div>
+    </div>
+  );
+}
